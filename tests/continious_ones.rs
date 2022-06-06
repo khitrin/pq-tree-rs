@@ -35,7 +35,7 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
 
     data.shuffle(&mut rng);
 
-    let mut pq = PQTree::new(rows);
+    let mut pq = PQTree::new(&(0..rows).collect::<Vec<usize>>());
     for c in 0..cols {
         let s = (0..rows).into_iter().filter(|&r| data[r][c] == 1).collect::<Vec<usize>>();
         assert_ne!(s.len(), 0);

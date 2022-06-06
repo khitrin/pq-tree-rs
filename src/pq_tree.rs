@@ -1,15 +1,20 @@
+use bimap::BiMap;
 use std::collections::{HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
+use std::hash::Hash;
 use std::iter;
 
 use enum_map::{enum_map, Enum, EnumMap};
 
 #[derive(Debug, Clone)]
-pub struct PQTree {
+pub struct PQTree<T>
+where
+    T: Copy + Eq + Hash,
+{
     root: usize,
     nodes: Vec<TreeNode>,
-    leafs: Vec<usize>,
     freelist: VecDeque<usize>,
+    leafs: BiMap<T, usize>,
     pertinent_root: Option<usize>,
 }
 
@@ -171,16 +176,11 @@ struct QNode {
     right: usize,
 }
 
-#[derive(Debug, Copy, Clone)]
-struct LNode {
-    payload: usize,
-}
-
 #[derive(Copy, Clone, Debug)]
 enum Node {
     P(PNode),
     Q(QNode),
-    L(LNode),
+    L,
 }
 
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -273,38 +273,26 @@ impl Node {
             panic!("Not a Q-node: {:?}!", self);
         }
     }
-
-    fn as_l(&self) -> &LNode {
-        if let Node::L(l) = self {
-            l
-        } else {
-            panic!("Not a L-node: {:?}!", self)
-        }
-    }
-
-    fn as_mut_l(&mut self) -> &mut LNode {
-        if let Node::L(l) = self {
-            l
-        } else {
-            panic!("Not a L-node: {:?}!", self)
-        }
-    }
 }
 
-impl PQTree {
-    pub fn new(initial_count: usize) -> PQTree {
+impl<T: Copy + Eq + Hash> PQTree<T> {
+    pub fn new(initial: &[T]) -> PQTree<T> {
+        let initial_count = initial.len();
+
         let pseudonode =
             TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
+
         let root = TreeNode { rel: Rel::Root, node: Node::P(PNode { child: 2 }), red: ReductionInfo::default() };
         let leafs = (0..initial_count).map(|i| TreeNode {
             rel: Rel::P(ChildOfP { parent: 1, next: ((i + 1) % initial_count) + 2 }),
-            node: Node::L(LNode { payload: i }),
+            node: Node::L,
             red: ReductionInfo::default(),
         });
+
         PQTree {
             root: 1,
             nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leafs).collect(),
-            leafs: ((0 + 2)..(initial_count + 2)).into_iter().collect(),
+            leafs: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
             freelist: VecDeque::new(),
             pertinent_root: None,
         }
@@ -326,7 +314,7 @@ impl PQTree {
         }
     }
 
-    pub fn reduction(mut self, s: &[usize]) -> Option<PQTree> {
+    pub fn reduction(mut self, s: &[T]) -> Option<PQTree<T>> {
         if self.bubble(s) && self.reduce(s) {
             Some(self)
         } else {
@@ -334,7 +322,7 @@ impl PQTree {
         }
     }
 
-    fn bubble(&mut self, s: &[usize]) -> bool {
+    fn bubble(&mut self, s: &[T]) -> bool {
         self.nodes.iter_mut().for_each(|n| n.red = Default::default());
 
         let mut block_count = 0usize;
@@ -342,7 +330,7 @@ impl PQTree {
         let mut off_the_top = 0usize;
 
         let mut queue = VecDeque::with_capacity(s.len());
-        s.iter().for_each(|&l| queue.push_back(self.leafs[l]));
+        s.iter().for_each(|leaf| queue.push_back(*self.leafs.get_by_left(leaf).unwrap()));
 
         fn unblock_adjacent(
             nodes: &mut Vec<TreeNode>,
@@ -467,18 +455,18 @@ impl PQTree {
         true
     }
 
-    fn reduce(&mut self, s: &[usize]) -> bool {
+    fn reduce(&mut self, s: &[T]) -> bool {
         // todo: optimize?
         self.nodes.iter_mut().for_each(|n| n.red.label = NodeLabel::Empty);
 
-        s.iter().for_each(|&i| {
-            let l = self.leafs[i];
-            self.nodes[l].red.pertinent_leaf_count = 1;
-            self.label(l, NodeLabel::Full);
-        });
-
         let mut queue = VecDeque::with_capacity(s.len());
-        s.iter().for_each(|&l| queue.push_back(self.leafs[l]));
+
+        s.iter().for_each(|leaf| {
+            let leaf_node = *self.leafs.get_by_left(leaf).unwrap();
+            self.nodes[leaf_node].red.pertinent_leaf_count = 1;
+            self.label(leaf_node, NodeLabel::Full);
+            queue.push_back(leaf_node);
+        });
 
         while let Some(x) = queue.pop_front() {
             let root = self.nodes[x].red.pertinent_leaf_count >= s.len();
@@ -499,7 +487,7 @@ impl PQTree {
             if !match self.nodes[x].node {
                 Node::P(PNode { child }) => self.apply_p_templates(x, child, root),
                 Node::Q(QNode { left, right }) => self.apply_q_templates(x, left, right, root),
-                Node::L(_) => self.apply_l_templates(x, root),
+                Node::L => self.apply_l_templates(x, root),
             } {
                 return self.fail();
             };
@@ -550,7 +538,7 @@ impl SubCircularList {
     }
 }
 
-impl PQTree {
+impl<T: Copy + Eq + Hash> PQTree<T> {
     fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
         let split = self.split_p_children(first_child);
 
@@ -963,8 +951,8 @@ impl PQTree {
     }
 }
 
-impl PQTree {
-    fn collect_frontier(&self, mut v: Vec<usize>, root: usize) -> Vec<usize> {
+impl<T: Copy + Eq + Hash> PQTree<T> {
+    fn collect_frontier(&self, mut v: Vec<T>, root: usize) -> Vec<T> {
         match self.nodes[root].node {
             Node::P(p) => {
                 let mut c = p.child;
@@ -989,19 +977,22 @@ impl PQTree {
                     };
                 }
             }
-            Node::L(l) => v.push(l.payload),
+            Node::L => v.push(*self.leafs.get_by_right(&root).unwrap()),
         };
         v
     }
 
-    pub fn frontier(&self) -> Vec<usize> {
+    pub fn frontier(&self) -> Vec<T> {
         self.collect_frontier(Vec::with_capacity(self.leafs.len()), self.root)
     }
 }
 
-impl Display for PQTree {
+impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        fn node_fmt(tree: &PQTree, idx: usize, f: &mut Formatter<'_>) -> std::fmt::Result {
+        fn node_fmt<T>(tree: &PQTree<T>, idx: usize, f: &mut Formatter<'_>) -> std::fmt::Result
+        where
+            T: Copy + Eq + Hash + Display,
+        {
             let TreeNode { node, .. } = &tree.nodes[idx];
             match node {
                 Node::P(p) => {
@@ -1035,8 +1026,8 @@ impl Display for PQTree {
 
                     write!(f, "]")?;
                 }
-                Node::L(l) => {
-                    write!(f, " {} ", l.payload)?;
+                Node::L => {
+                    write!(f, " {} ", tree.leafs.get_by_right(&idx).unwrap())?;
                 }
             };
 
