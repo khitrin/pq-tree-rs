@@ -2,7 +2,7 @@ use std::collections::{HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::iter;
 
-use enum_map::{Enum, enum_map, EnumMap};
+use enum_map::{enum_map, Enum, EnumMap};
 
 #[derive(Debug, Clone)]
 pub struct PQTree {
@@ -50,22 +50,14 @@ enum Rel {
 impl RightChildOfQ {
     #[must_use]
     fn to_iq(&self, right: usize) -> Rel {
-        Rel::IQ(InteriorChildOfQ {
-            parent_of_unblocked: self.parent,
-            left: self.left,
-            right,
-        })
+        Rel::IQ(InteriorChildOfQ { parent_of_unblocked: self.parent, left: self.left, right })
     }
 }
 
 impl LeftChildOfQ {
     #[must_use]
     fn to_iq(&self, left: usize) -> Rel {
-        Rel::IQ(InteriorChildOfQ {
-            parent_of_unblocked: self.parent,
-            left,
-            right: self.right,
-        })
+        Rel::IQ(InteriorChildOfQ { parent_of_unblocked: self.parent, left, right: self.right })
     }
 }
 
@@ -139,7 +131,7 @@ impl Rel {
         match self {
             Rel::RQ(RightChildOfQ { left, .. }) => left,
             Rel::IQ(InteriorChildOfQ { left, .. }) => left,
-            _ => panic!("Not RQ or IQ: {:?}", self)
+            _ => panic!("Not RQ or IQ: {:?}", self),
         }
     }
 
@@ -147,7 +139,7 @@ impl Rel {
         match self {
             Rel::LQ(LeftChildOfQ { right, .. }) => right,
             Rel::IQ(InteriorChildOfQ { right, .. }) => right,
-            _ => panic!("Not LQ or IQ: {:?}", self)
+            _ => panic!("Not LQ or IQ: {:?}", self),
         }
     }
 
@@ -155,7 +147,7 @@ impl Rel {
         *match self {
             Rel::RQ(RightChildOfQ { left, .. }) => left,
             Rel::IQ(InteriorChildOfQ { left, .. }) => left,
-            _ => panic!("Not RQ or IQ: {:?}", self)
+            _ => panic!("Not RQ or IQ: {:?}", self),
         }
     }
 
@@ -163,7 +155,7 @@ impl Rel {
         *match self {
             Rel::LQ(LeftChildOfQ { right, .. }) => right,
             Rel::IQ(InteriorChildOfQ { right, .. }) => right,
-            _ => panic!("Not LQ or IQ: {:?}", self)
+            _ => panic!("Not LQ or IQ: {:?}", self),
         }
     }
 }
@@ -217,7 +209,12 @@ struct ReductionInfo {
 
 impl Default for ReductionInfo {
     fn default() -> Self {
-        ReductionInfo { mark: NodeMark::Unmarked, label: NodeLabel::Empty, pertinent_child_count: 0, pertinent_leaf_count: 0 }
+        ReductionInfo {
+            mark: NodeMark::Unmarked,
+            label: NodeLabel::Empty,
+            pertinent_child_count: 0,
+            pertinent_leaf_count: 0,
+        }
     }
 }
 
@@ -232,7 +229,9 @@ impl TreeNode {
     fn parent_of_unblocked(&self) -> usize {
         match self.rel {
             Rel::Root => usize::MAX,
-            Rel::P(ChildOfP { parent, .. }) | Rel::LQ(LeftChildOfQ { parent, .. }) | Rel::RQ(RightChildOfQ { parent, .. }) => parent,
+            Rel::P(ChildOfP { parent, .. })
+            | Rel::LQ(LeftChildOfQ { parent, .. })
+            | Rel::RQ(RightChildOfQ { parent, .. }) => parent,
             Rel::IQ(InteriorChildOfQ { parent_of_unblocked, .. }) => {
                 debug_assert_ne!(self.red.mark, NodeMark::Blocked);
                 parent_of_unblocked
@@ -294,9 +293,14 @@ impl Node {
 
 impl PQTree {
     pub fn new(initial_count: usize) -> PQTree {
-        let pseudonode = TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
+        let pseudonode =
+            TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
         let root = TreeNode { rel: Rel::Root, node: Node::P(PNode { child: 2 }), red: ReductionInfo::default() };
-        let leafs = (0..initial_count).map(|i| TreeNode { rel: Rel::P(ChildOfP { parent: 1, next: ((i + 1) % initial_count) + 2 }), node: Node::L(LNode { payload: i }), red: ReductionInfo::default() });
+        let leafs = (0..initial_count).map(|i| TreeNode {
+            rel: Rel::P(ChildOfP { parent: 1, next: ((i + 1) % initial_count) + 2 }),
+            node: Node::L(LNode { payload: i }),
+            red: ReductionInfo::default(),
+        });
         PQTree {
             root: 1,
             nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leafs).collect(),
@@ -340,7 +344,13 @@ impl PQTree {
         let mut queue = VecDeque::with_capacity(s.len());
         s.iter().for_each(|&l| queue.push_back(self.leafs[l]));
 
-        fn unblock_adjacent(nodes: &mut Vec<TreeNode>, parent: usize, first_blocked: Option<usize>, left: bool, blocked: &mut HashSet<usize>) -> Option<usize> {
+        fn unblock_adjacent(
+            nodes: &mut Vec<TreeNode>,
+            parent: usize,
+            first_blocked: Option<usize>,
+            left: bool,
+            blocked: &mut HashSet<usize>,
+        ) -> Option<usize> {
             let mut last_unblocked = None;
             if let Some(mut b) = first_blocked {
                 loop {
@@ -388,22 +398,33 @@ impl PQTree {
                     self.nodes[x].red.mark = NodeMark::Blocked;
                 }
 
-                (if left_mark == NodeMark::Blocked { Some(iq.left) } else { None }, if right_mark == NodeMark::Blocked { Some(iq.right) } else { None })
+                (
+                    if left_mark == NodeMark::Blocked { Some(iq.left) } else { None },
+                    if right_mark == NodeMark::Blocked { Some(iq.right) } else { None },
+                )
             } else {
                 self.nodes[x].red.mark = NodeMark::Unblocked;
 
                 match &rel {
-                    Rel::RQ(rq) => (if self.nodes[rq.left].red.mark == NodeMark::Blocked { Some(rq.left) } else { None }, None),
-                    Rel::LQ(lq) => (None, if self.nodes[lq.right].red.mark == NodeMark::Blocked { Some(lq.right) } else { None }),
-                    _ => (None, None)
+                    Rel::RQ(rq) => {
+                        (if self.nodes[rq.left].red.mark == NodeMark::Blocked { Some(rq.left) } else { None }, None)
+                    }
+                    Rel::LQ(lq) => {
+                        (None, if self.nodes[lq.right].red.mark == NodeMark::Blocked { Some(lq.right) } else { None })
+                    }
+                    _ => (None, None),
                 }
             };
             self.nodes[x].rel = rel;
 
             let bs = {
                 let mut bs = 0;
-                if l_blocked.is_some() { bs += 1 };
-                if r_blocked.is_some() { bs += 1 };
+                if l_blocked.is_some() {
+                    bs += 1
+                };
+                if r_blocked.is_some() {
+                    bs += 1
+                };
                 bs
             };
 
@@ -479,7 +500,9 @@ impl PQTree {
                 Node::P(PNode { child }) => self.apply_p_templates(x, child, root),
                 Node::Q(QNode { left, right }) => self.apply_q_templates(x, left, right, root),
                 Node::L(_) => self.apply_l_templates(x, root),
-            } { return self.fail(); };
+            } {
+                return self.fail();
+            };
         }
         true
     }
@@ -527,7 +550,6 @@ impl SubCircularList {
     }
 }
 
-#[allow(non_snake_case)]
 impl PQTree {
     fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
         let split = self.split_p_children(first_child);
@@ -541,21 +563,25 @@ impl PQTree {
         let singly = split[NodeLabel::SinglyPartial].len();
 
         if singly == 0 {
-            if empty > 0 && full == 0 { // P0
+            if empty > 0 && full == 0 {
+                // P0
                 return self.label(x, NodeLabel::Empty);
             }
 
-            if full > 0 && empty == 0 { // P1
+            if full > 0 && empty == 0 {
+                // P1
                 return self.label(x, NodeLabel::Full);
             }
 
             if full > 0 && empty > 0 {
                 let full_sub_node = self.add_sub_p_node(&split[NodeLabel::Full], NodeLabel::Full);
 
-                if root { // P2
+                if root {
+                    // P2
                     self.recombine_p(x, &split[NodeLabel::Empty], full_sub_node);
                     return self.mark_as_pertinent_root(full_sub_node);
-                } else { // P3
+                } else {
+                    // P3
                     let empty_sub_node = self.add_sub_p_node(&split[NodeLabel::Empty], NodeLabel::Empty);
                     self.nodes[x].node = Node::Q(QNode { left: empty_sub_node, right: full_sub_node });
 
@@ -564,7 +590,8 @@ impl PQTree {
                     return self.label(x, NodeLabel::SinglyPartial);
                 }
             }
-        } else if singly == 1 { // P4 or P5
+        } else if singly == 1 {
+            // P4 or P5
             let sp = split[NodeLabel::SinglyPartial].first();
             let full_left = self.nodes[self.nodes[sp].node.as_q().left].red.label == NodeLabel::Full;
 
@@ -573,8 +600,9 @@ impl PQTree {
                 self.attach_to_q(sp, full_sub_node, full_left);
             }
 
-            if root { // P4
-                debug_assert!(full != 0, "root node with single 'singly partial' child must have at least one full child !");
+            if root {
+                // P4
+                debug_assert!(full != 0, "root with single 'singly partial' child must have at least one full child !");
                 if empty > 0 {
                     self.recombine_p(x, &split[NodeLabel::Empty], sp);
                     return self.mark_as_pertinent_root(sp);
@@ -582,7 +610,8 @@ impl PQTree {
                     self.replace_p_by_q(x, sp);
                     return self.mark_as_pertinent_root(x);
                 }
-            } else { // P5
+            } else {
+                // P5
                 if empty > 0 {
                     let full_empty_node = self.add_sub_p_node(&split[NodeLabel::Empty], NodeLabel::Empty);
                     self.attach_to_q(sp, full_empty_node, !full_left);
@@ -591,7 +620,8 @@ impl PQTree {
                 self.replace_p_by_q(x, sp);
                 return self.confirm_p5_replacement(x);
             }
-        } else if root && singly == 2 { // P6
+        } else if root && singly == 2 {
+            // P6
             let (left, right) = {
                 let sp1 = split[NodeLabel::SinglyPartial].first();
                 let sp2 = split[NodeLabel::SinglyPartial].last();
@@ -654,9 +684,7 @@ impl PQTree {
         } else {
             let new_p = self.add_node(TreeNode {
                 rel: Rel::Root, // parent must be changed by caller
-                node: Node::P(PNode {
-                    child: children.first()
-                }),
+                node: Node::P(PNode { child: children.first() }),
                 red: ReductionInfo { label, ..Default::default() },
             });
 
@@ -791,7 +819,8 @@ impl PQTree {
         let rightmost = self.nodes[child].node.as_q().right;
 
         match rel_to_parent {
-            Rel::LQ(lq) => { // child is leftmost child of parent
+            Rel::LQ(lq) => {
+                // child is leftmost child of parent
                 self.nodes[lq.parent].node.as_mut_q().left = leftmost;
                 self.nodes[leftmost].rel.as_mut_lq().parent = lq.parent;
 
@@ -811,7 +840,7 @@ impl PQTree {
                 self.nodes[rightmost].rel = self.nodes[rightmost].rel.as_rq().to_iq(iq.right);
                 *self.nodes[iq.right].rel.mut_left() = rightmost;
             }
-            other => panic!("Not a Q-child: {:?} !", other)
+            other => panic!("Not a Q-child: {:?} !", other),
         }
         self.recycle_node(child);
     }
@@ -831,11 +860,7 @@ impl PQTree {
         let mut state = State::Initial;
         let mut next = Some(left);
         while let Some(current) = next {
-            next = if current == right {
-                None
-            } else {
-                Some(self.nodes[current].rel.right())
-            };
+            next = if current == right { None } else { Some(self.nodes[current].rel.right()) };
 
             let label = self.nodes[current].red.label;
 
@@ -845,8 +870,8 @@ impl PQTree {
                 (State::Initial, NodeLabel::Full) => State::F,
                 (State::Initial, NodeLabel::SinglyPartial) => State::SP(current),
 
-                (s @ (State::E | State::FE | State::EFE), NodeLabel::Empty) |
-                (s @ (State::F | State::EF), NodeLabel::Full) => s,
+                (s @ (State::E | State::FE | State::EFE), NodeLabel::Empty)
+                | (s @ (State::F | State::EF), NodeLabel::Full) => s,
 
                 (State::E, NodeLabel::Full) => State::EF,
                 (State::F, NodeLabel::Empty) => State::FE,
@@ -867,7 +892,7 @@ impl PQTree {
                     match s {
                         State::F => State::FE,
                         State::EF => State::EFE,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     }
                 }
 
@@ -901,9 +926,9 @@ impl PQTree {
             State::SP(_) => panic!("single child in Q node"),
 
             State::E => self.label(x, NodeLabel::Empty), // Q0
-            State::F => self.label(x, NodeLabel::Full), // Q1
+            State::F => self.label(x, NodeLabel::Full),  // Q1
             State::EF | State::FE => self.label(x, NodeLabel::SinglyPartial), // Q2
-            State::EFE => self.label(x, NodeLabel::DoublyPartial) // Q3
+            State::EFE => self.label(x, NodeLabel::DoublyPartial), // Q3
         };
     }
 
@@ -946,7 +971,9 @@ impl PQTree {
                 loop {
                     v = self.collect_frontier(v, c);
                     c = self.nodes[c].rel.as_p().next;
-                    if c == p.child { break; }
+                    if c == p.child {
+                        break;
+                    }
                 }
             }
             Node::Q(q) => {
@@ -955,14 +982,14 @@ impl PQTree {
                     v = self.collect_frontier(v, c);
                     // TODO: iterator for Q children?
                     c = match self.nodes[c].rel {
-                        Rel::LQ(lq) => { lq.right }
-                        Rel::IQ(iq) => { iq.right }
-                        Rel::RQ(_) => { break; }
-                        other => panic!("Not a Q-child: {:?} !", other)
+                        Rel::LQ(lq) => lq.right,
+                        Rel::IQ(iq) => iq.right,
+                        Rel::RQ(_) => break,
+                        other => panic!("Not a Q-child: {:?} !", other),
                     };
                 }
             }
-            Node::L(l) => v.push(l.payload)
+            Node::L(l) => v.push(l.payload),
         };
         v
     }
@@ -999,8 +1026,10 @@ impl Display for PQTree {
                         node_fmt(tree, q_idx, f)?;
                         let TreeNode { rel, .. } = &tree.nodes[q_idx];
                         match rel {
-                            Rel::LQ(LeftChildOfQ { right, .. }) | Rel::IQ(InteriorChildOfQ { right, .. }) => q_idx = *right,
-                            _ => break
+                            Rel::LQ(LeftChildOfQ { right, .. }) | Rel::IQ(InteriorChildOfQ { right, .. }) => {
+                                q_idx = *right
+                            }
+                            _ => break,
                         }
                     }
 

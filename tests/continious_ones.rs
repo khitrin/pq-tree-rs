@@ -1,7 +1,7 @@
 use std::{iter, panic};
 
-use rand::{Rng, RngCore, SeedableRng, thread_rng};
 use rand::seq::SliceRandom;
+use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rand_pcg::Pcg64;
 
 use ::pq_tree::PQTree;
@@ -14,9 +14,7 @@ fn consecutive_ones_test() {
         let r = rng.gen_range(2..=16);
         let c = rng.gen_range(2..=16);
 
-        let result = panic::catch_unwind(|| {
-            consecutive_ones_test_iter(r, c, seed)
-        });
+        let result = panic::catch_unwind(|| consecutive_ones_test_iter(r, c, seed));
         if let Err(_) = result {
             dbg!(i, r, c, seed);
             panic!();
@@ -46,8 +44,12 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
 
     let frontier = pq.frontier();
     for c in 0..cols {
-        let changes = frontier.iter().map(|&r| data[r][c]).chain(iter::once(0))
-            .fold((0, 0), |(prev, acc), curr| (curr, if curr == prev { acc } else { acc + 1 })).1;
+        let changes = frontier
+            .iter()
+            .map(|&r| data[r][c])
+            .chain(iter::once(0))
+            .fold((0, 0), |(prev, acc), curr| (curr, if curr == prev { acc } else { acc + 1 }))
+            .1;
 
         assert_eq!(changes, 2);
     }
