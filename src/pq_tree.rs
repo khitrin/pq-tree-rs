@@ -11,12 +11,14 @@ pub struct PQTree<T>
 where
     T: Copy + Eq + Hash,
 {
-    root: usize,
     nodes: Vec<TreeNode>,
     freelist: VecDeque<usize>,
     leafs: BiMap<T, usize>,
     pertinent_root: Option<usize>,
 }
+
+const PSEUDONODE: usize = 0;
+const ROOT: usize = 1;
 
 #[derive(Debug, Copy, Clone)]
 struct ChildOfP {
@@ -290,7 +292,6 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         });
 
         PQTree {
-            root: 1,
             nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leafs).collect(),
             leafs: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
             freelist: VecDeque::new(),
@@ -446,10 +447,10 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         if let Some(&x) = blocked.iter().next() {
             // create pseudonode from block
 
-            let left = unblock_adjacent(&mut self.nodes, 0, Some(x), true, &mut blocked).unwrap();
-            let right = unblock_adjacent(&mut self.nodes, 0, Some(x), false, &mut blocked).unwrap();
-            self.nodes[0].node = Node::Q(QNode { left, right }); // 0 is pseudonode
-            self.nodes[0].red.pertinent_child_count -= 1; // unblock_adjacent have touched central node two times
+            let left = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), true, &mut blocked).unwrap();
+            let right = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), false, &mut blocked).unwrap();
+            self.nodes[PSEUDONODE].node = Node::Q(QNode { left, right });
+            self.nodes[PSEUDONODE].red.pertinent_child_count -= 1; // unblock_adjacent have touched central node two times
         }
 
         true
@@ -631,7 +632,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 }
             };
 
-            debug_assert_ne!(left, 0);
+            debug_assert_ne!(left, PSEUDONODE);
 
             if full > 0 {
                 let full_sub_node = self.add_sub_p_node(&split[NodeLabel::Full], NodeLabel::Full);
@@ -679,7 +680,6 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             let mut current = children.first();
 
             loop {
-                debug_assert_ne!(new_p, 0);
                 self.nodes[current].rel.as_mut_p().parent = new_p;
                 current = self.nodes[current].rel.as_p().next;
                 if current == children.first() {
@@ -749,7 +749,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 
     fn reverse_q(&mut self, q: usize) {
-        debug_assert_ne!(q, 0);
+        debug_assert_ne!(q, PSEUDONODE);
         let mut current = self.nodes[self.nodes[q].node.as_q().left].rel.as_lq().right;
         while let Rel::IQ(iq) = &mut self.nodes[current].rel {
             current = iq.right;
@@ -769,7 +769,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 
     fn replace_p_by_q(&mut self, target: usize, source: usize) {
-        debug_assert_ne!(target, 0);
+        debug_assert_ne!(target, PSEUDONODE); // pseudonode is always Q-node
 
         self.nodes[target].node = self.nodes[source].node;
         self.nodes[target].red.label = self.nodes[source].red.label;
@@ -983,7 +983,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 
     pub fn frontier(&self) -> Vec<T> {
-        self.collect_frontier(Vec::with_capacity(self.leafs.len()), self.root)
+        self.collect_frontier(Vec::with_capacity(self.leafs.len()), ROOT)
     }
 }
 
@@ -1034,6 +1034,6 @@ impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
             return Ok(());
         }
 
-        node_fmt(&self, self.root, f)
+        node_fmt(&self, ROOT, f)
     }
 }
