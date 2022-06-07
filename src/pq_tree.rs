@@ -14,7 +14,7 @@ where
     empty: bool,
     nodes: Vec<TreeNode>,
     freelist: VecDeque<usize>,
-    leafs: BiMap<T, usize>,
+    leaves: BiMap<T, usize>,
     pertinent_root: Option<usize>,
 }
 
@@ -297,7 +297,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
 
         let root = TreeNode { rel: Rel::Root, node: Node::P(PNode { child: 2 }), red: ReductionInfo::default() };
-        let leafs = (0..initial_count).map(|i| TreeNode {
+        let leaves = (0..initial_count).map(|i| TreeNode {
             rel: Rel::P(ChildOfP { parent: 1, next: ((i + 1) % initial_count) + 2 }),
             node: Node::L,
             red: ReductionInfo::default(),
@@ -305,8 +305,8 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
         PQTree {
             empty: false,
-            nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leafs).collect(),
-            leafs: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
+            nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leaves).collect(),
+            leaves: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
             freelist: VecDeque::new(),
             pertinent_root: None,
         }
@@ -359,7 +359,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 }
             }
             Node::L => {
-                self.leafs.remove_by_right(&idx).unwrap();
+                self.leaves.remove_by_right(&idx).unwrap();
             }
         }
 
@@ -386,7 +386,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         let mut off_the_top = 0usize;
 
         let mut queue = VecDeque::with_capacity(s.len());
-        s.iter().for_each(|leaf| queue.push_back(*self.leafs.get_by_left(leaf).unwrap()));
+        s.iter().for_each(|leaf| queue.push_back(*self.leaves.get_by_left(leaf).unwrap()));
 
         fn unblock_adjacent(
             nodes: &mut Vec<TreeNode>,
@@ -518,7 +518,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         let mut queue = VecDeque::with_capacity(s.len());
 
         s.iter().for_each(|leaf| {
-            let leaf_node = *self.leafs.get_by_left(leaf).unwrap();
+            let leaf_node = *self.leaves.get_by_left(leaf).unwrap();
             self.nodes[leaf_node].red.pertinent_leaf_count = 1;
             self.label(leaf_node, NodeLabel::Full);
             queue.push_back(leaf_node);
@@ -617,7 +617,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         } else if leaves.len() == 1 {
             self.destroy_node(idx, false);
             self.nodes[idx].node = Node::L;
-            self.leafs.insert_no_overwrite(leaves[0], idx).ok().expect("leaf conflict");
+            self.leaves.insert_no_overwrite(leaves[0], idx).ok().expect("leaf conflict");
             Some(idx)
         } else {
             self.destroy_node(idx, false);
@@ -628,7 +628,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     red: Default::default(),
                 });
                 // TODO: T: Debug
-                self.leafs.insert_no_overwrite(leaf, leaf_node).ok().expect("leaf conflict");
+                self.leaves.insert_no_overwrite(leaf, leaf_node).ok().expect("leaf conflict");
 
                 (first_last.0.or(Some(leaf_node)), Some(leaf_node))
             });
@@ -695,8 +695,8 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 self.nodes[q.right].rel.as_mut_rq().parent = target;
             }
             Node::L => {
-                let leaf = self.leafs.remove_by_right(&source).unwrap().0;
-                self.leafs.insert_no_overwrite(leaf, target).ok().unwrap();
+                let leaf = self.leaves.remove_by_right(&source).unwrap().0;
+                self.leaves.insert_no_overwrite(leaf, target).ok().unwrap();
             }
         }
 
@@ -1191,13 +1191,13 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     };
                 }
             }
-            Node::L => v.push(*self.leafs.get_by_right(&root).unwrap()),
+            Node::L => v.push(*self.leaves.get_by_right(&root).unwrap()),
         };
         v
     }
 
     pub fn frontier(&self) -> Vec<T> {
-        self.collect_frontier(Vec::with_capacity(self.leafs.len()), ROOT)
+        self.collect_frontier(Vec::with_capacity(self.leaves.len()), ROOT)
     }
 }
 
@@ -1241,7 +1241,7 @@ impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
                     write!(f, "]")?;
                 }
                 Node::L => {
-                    write!(f, " {} ", tree.leafs.get_by_right(&idx).unwrap())?;
+                    write!(f, " {} ", tree.leaves.get_by_right(&idx).unwrap())?;
                 }
             };
 
