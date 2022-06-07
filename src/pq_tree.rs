@@ -886,8 +886,10 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             let new_p = self.add_node(TreeNode {
                 rel: Rel::Root, // parent must be changed by caller
                 node: Node::P(PNode { child: children.first() }),
-                red: ReductionInfo { label, ..Default::default() },
+                red: Default::default(),
             });
+
+            self.label(new_p, label);
 
             let mut current = children.first();
 
