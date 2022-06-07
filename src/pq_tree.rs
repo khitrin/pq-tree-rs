@@ -11,6 +11,7 @@ pub struct PQTree<T>
 where
     T: Copy + Eq + Hash,
 {
+    empty: bool,
     nodes: Vec<TreeNode>,
     freelist: VecDeque<usize>,
     leafs: BiMap<T, usize>,
@@ -19,6 +20,7 @@ where
 
 const PSEUDONODE: usize = 0;
 const ROOT: usize = 1;
+const ABSENT: usize = usize::MAX;
 
 #[derive(Debug, Copy, Clone)]
 struct ChildOfP {
@@ -165,6 +167,13 @@ impl Rel {
             _ => panic!("Not LQ or IQ: {:?}", self),
         }
     }
+
+    fn next(&self) -> usize {
+        *match self {
+            Rel::P(ChildOfP { next, .. }) => next,
+            _ => panic!("Not P: {:?}", self),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -230,7 +239,7 @@ struct TreeNode {
 impl TreeNode {
     fn parent_of_unblocked(&self) -> usize {
         match self.rel {
-            Rel::Root => usize::MAX,
+            Rel::Root => ABSENT,
             Rel::P(ChildOfP { parent, .. })
             | Rel::LQ(LeftChildOfQ { parent, .. })
             | Rel::RQ(RightChildOfQ { parent, .. }) => parent,
@@ -280,6 +289,9 @@ impl Node {
 impl<T: Copy + Eq + Hash> PQTree<T> {
     pub fn new(initial: &[T]) -> PQTree<T> {
         let initial_count = initial.len();
+        assert_ne!(initial_count, 0);
+        // TODO: single leaf !
+        assert_ne!(initial_count, 1);
 
         let pseudonode =
             TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
@@ -292,6 +304,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         });
 
         PQTree {
+            empty: false,
             nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leafs).collect(),
             leafs: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
             freelist: VecDeque::new(),
@@ -302,6 +315,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     fn recycle_node(&mut self, idx: usize) {
         // TODO: remove last node and truncate freelist if possible?
         debug_assert!(!self.freelist.contains(&idx));
+        self.nodes[idx].rel = Rel::Root;
         self.freelist.push_back(idx);
     }
 
@@ -315,7 +329,48 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
     }
 
+    fn destroy_node(&mut self, idx: usize, recycle: bool) {
+        if idx == ROOT {
+            self.empty = true;
+            return;
+        }
+        debug_assert_ne!(idx, PSEUDONODE);
+
+        match self.nodes[idx].node {
+            Node::P(p) => {
+                let mut next = Some(p.child);
+                while let Some(current) = next {
+                    next = {
+                        let next = self.nodes[current].rel.next();
+                        if next != p.child {
+                            Some(next)
+                        } else {
+                            None
+                        }
+                    };
+                    self.destroy_node(current, true);
+                }
+            }
+            Node::Q(q) => {
+                let mut next = Some(q.left);
+                while let Some(current) = next {
+                    next = if current != q.right { Some(self.nodes[current].rel.right()) } else { None };
+                    self.destroy_node(current, true);
+                }
+            }
+            Node::L => {
+                self.leafs.remove_by_right(&idx).unwrap();
+            }
+        }
+
+        if recycle {
+            self.recycle_node(idx);
+        }
+    }
+
     pub fn reduction(mut self, s: &[T]) -> Option<PQTree<T>> {
+        assert!(!self.empty);
+
         if self.bubble(s) && self.reduce(s) {
             Some(self)
         } else {
@@ -423,7 +478,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 unblock_adjacent(&mut self.nodes, y, l_blocked, true, &mut blocked);
                 unblock_adjacent(&mut self.nodes, y, r_blocked, false, &mut blocked);
 
-                if y == usize::MAX {
+                if y == ABSENT {
                     off_the_top = 1;
                 } else {
                     self.nodes[y].red.pertinent_child_count += 1;
@@ -494,6 +549,158 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             };
         }
         true
+    }
+
+    fn remove_node(&mut self, idx: usize) -> Option<(usize, usize)> {
+        let replacement = match self.nodes[idx].rel {
+            Rel::Root => {
+                self.empty = true; // cannot be undone, tree is destroyed
+                None
+            }
+            Rel::P(p) => {
+                if self.nodes[p.next].rel.as_p().next == idx {
+                    // last child remains in parent, replace node by child
+                    self.replace_node(p.parent, p.next);
+                    Some((p.next, p.parent))
+                } else {
+                    None
+                }
+            }
+            Rel::LQ(lq) => {
+                let right_right = self.nodes[lq.right].rel.right();
+
+                if let Rel::RQ(_) = self.nodes[right_right].rel {
+                    self.replace_with_pair_p(lq.parent, lq.right, right_right);
+                } else {
+                    self.nodes[lq.parent].node.as_mut_q().left = lq.right;
+                    self.nodes[lq.right].rel = Rel::LQ(LeftChildOfQ { parent: lq.parent, right: right_right });
+                }
+                None
+            }
+            Rel::RQ(rq) => {
+                let left_left = self.nodes[rq.left].rel.left();
+
+                if let Rel::LQ(_) = self.nodes[left_left].rel {
+                    self.replace_with_pair_p(rq.parent, rq.left, left_left);
+                } else {
+                    self.nodes[rq.parent].node.as_mut_q().right = rq.left;
+                    self.nodes[rq.left].rel = Rel::RQ(RightChildOfQ { parent: rq.parent, left: left_left });
+                }
+                None
+            }
+            Rel::IQ(iq) => {
+                if let (Rel::LQ(lq), Rel::RQ(_)) = (self.nodes[iq.left].rel, self.nodes[iq.right].rel) {
+                    self.replace_with_pair_p(lq.parent, iq.left, iq.right);
+                } else {
+                    *self.nodes[iq.left].rel.mut_right() = iq.right;
+                    *self.nodes[iq.right].rel.mut_left() = iq.left;
+                }
+                None
+            }
+        };
+
+        self.destroy_node(idx, true);
+        replacement
+    }
+
+    fn replace_with_pair_p(&mut self, idx: usize, left: usize, right: usize) {
+        self.nodes[idx].node = Node::P(PNode { child: left });
+        self.nodes[left].rel = Rel::P(ChildOfP { parent: idx, next: right });
+        self.nodes[right].rel = Rel::P(ChildOfP { parent: idx, next: left });
+    }
+
+    fn replace_by_new_leaves(&mut self, idx: usize, leaves: &[T]) -> Option<usize> {
+        debug_assert!(!self.freelist.contains(&idx));
+        if leaves.len() == 0 {
+            self.remove_node(idx);
+            None
+        } else if leaves.len() == 1 {
+            self.destroy_node(idx, false);
+            self.nodes[idx].node = Node::L;
+            self.leafs.insert_no_overwrite(leaves[0], idx).ok().expect("leaf conflict");
+            Some(idx)
+        } else {
+            self.destroy_node(idx, false);
+            let first_last = leaves.iter().rev().fold((None, None), |first_last, &leaf| {
+                let leaf_node = self.add_node(TreeNode {
+                    rel: Rel::P(ChildOfP { parent: idx, next: first_last.1.unwrap_or(0) }),
+                    node: Node::L,
+                    red: Default::default(),
+                });
+                // TODO: T: Debug
+                self.leafs.insert_no_overwrite(leaf, leaf_node).ok().expect("leaf conflict");
+
+                (first_last.0.or(Some(leaf_node)), Some(leaf_node))
+            });
+
+            let (first, last) = (first_last.0.unwrap(), first_last.1.unwrap());
+            // wrap circular list
+            self.nodes[first].rel.as_mut_p().next = last;
+            self.nodes[idx].node = Node::P(PNode { child: last });
+            Some(idx)
+        }
+    }
+
+    pub fn replace_pertinent_by_new_leaves(&mut self, leaves: &[T]) {
+        let pertinent_root = self.pertinent_root.expect("replace is possible only after reduction");
+        self.pertinent_root = match self.nodes[pertinent_root].node {
+            Node::P(_) | Node::L => self.replace_by_new_leaves(pertinent_root, leaves),
+            Node::Q(q) => {
+                if pertinent_root != PSEUDONODE && self.nodes[pertinent_root].red.label == NodeLabel::Full {
+                    // full non-pseudo Q-node
+                    self.replace_by_new_leaves(pertinent_root, leaves)
+                } else {
+                    // partial Q-node or pseudonode
+                    // TODO: optimize for SinglyPartial case
+                    let mut next = Some(q.left);
+                    let mut first = None;
+                    while let Some(current) = next {
+                        next = if current == q.right { None } else { Some(self.nodes[current].rel.right()) };
+
+                        if self.nodes[current].red.label == NodeLabel::Full {
+                            if let Some(first_unwrapped) = first {
+                                let replacement = self.remove_node(current);
+                                if let Some((old, new)) = replacement {
+                                    if old == first_unwrapped {
+                                        first = Some(new);
+                                    }
+                                }
+                            } else {
+                                first = Some(current);
+                            }
+                        }
+                    }
+
+                    self.replace_by_new_leaves(first.unwrap(), leaves)
+                }
+            }
+        };
+    }
+
+    fn replace_node(&mut self, target: usize, source: usize) {
+        self.nodes[target].node = self.nodes[source].node;
+        self.nodes[target].red = self.nodes[source].red.clone();
+
+        match self.nodes[target].node {
+            Node::P(p) => {
+                let mut next = Some(p.child);
+                while let Some(current) = next {
+                    let r = self.nodes[current].rel.as_mut_p();
+                    next = if r.next != p.child { Some(r.next) } else { None };
+                    r.parent = target;
+                }
+            }
+            Node::Q(q) => {
+                self.nodes[q.left].rel.as_mut_lq().parent = target;
+                self.nodes[q.right].rel.as_mut_rq().parent = target;
+            }
+            Node::L => {
+                let leaf = self.leafs.remove_by_right(&source).unwrap().0;
+                self.leafs.insert_no_overwrite(leaf, target).ok().unwrap();
+            }
+        }
+
+        self.recycle_node(source);
     }
 }
 
@@ -1034,6 +1241,10 @@ impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
             return Ok(());
         }
 
-        node_fmt(&self, ROOT, f)
+        if self.empty {
+            write!(f, "()")
+        } else {
+            node_fmt(&self, ROOT, f)
+        }
     }
 }
