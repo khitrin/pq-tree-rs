@@ -766,7 +766,12 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
             if full > 0 && empty == 0 {
                 // P1
-                return self.label(x, NodeLabel::Full);
+                if root {
+                    self.label(x, NodeLabel::Full);
+                    return self.mark_as_pertinent_root(x);
+                } else {
+                    return self.label(x, NodeLabel::Full);
+                }
             }
 
             if full > 0 && empty > 0 {
