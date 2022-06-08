@@ -6,6 +6,7 @@ use std::iter;
 use bimap::BiMap;
 use enum_map::Enum;
 
+use crate::errors::*;
 use crate::node::*;
 use crate::rel::*;
 
@@ -93,14 +94,22 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
     }
 
-    pub fn reduction(mut self, s: &[T]) -> Option<PQTree<T>> {
-        assert!(!self.empty);
-
-        if self.bubble(s) && self.reduce(s) {
-            Some(self)
-        } else {
-            None
+    pub fn reduction(mut self, s: &[T]) -> Result<PQTree<T>, ReductionError<T>> {
+        if s.is_empty() {
+            return Err(ReductionError::EmptyLeafSet);
         }
+
+        let mut s_nodes = Vec::with_capacity(s.len());
+        for leaf in s {
+            match self.leaves.get_by_left(leaf) {
+                Some(&node) => s_nodes.push(node),
+                None => return Err(ReductionError::LeafNotFound(*leaf)),
+            };
+        }
+
+        self.bubble(&s_nodes)?;
+        self.reduce(&s_nodes)?;
+        Ok(self)
     }
 
     pub(crate) fn recycle_node(&mut self, idx: usize) {
@@ -150,7 +159,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 }
             }
             Node::L => {
-                self.leaves.remove_by_right(&idx).unwrap();
+                self.leaves.remove_by_right(&idx).expect("broken leaves map");
             }
         }
 
@@ -217,40 +226,43 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         self.nodes[right].rel = Rel::P(ChildOfP { parent: idx, next: left });
     }
 
-    fn replace_by_new_leaves(&mut self, idx: usize, leaves: &[T]) -> Option<usize> {
+    fn replace_by_new_leaves(&mut self, idx: usize, leaves: &[T]) -> Result<Option<usize>, ReplacementError<T>> {
         debug_assert!(!self.freelist.contains(&idx));
         if leaves.is_empty() {
             self.remove_node(idx);
-            None
+            Ok(None)
         } else if leaves.len() == 1 {
             self.destroy_node(idx, false);
             self.nodes[idx].node = Node::L;
-            self.leaves.insert_no_overwrite(leaves[0], idx).ok().expect("leaf conflict");
-            Some(idx)
+            self.leaves.insert_no_overwrite(leaves[0], idx).map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
+            Ok(Some(idx))
         } else {
             self.destroy_node(idx, false);
-            let first_last = leaves.iter().rev().fold((None, None), |first_last, &leaf| {
+            let first_last = leaves.iter().rev().try_fold((None, None), |first_last, &leaf| {
                 let leaf_node = self.add_node(TreeNode {
                     rel: Rel::P(ChildOfP { parent: idx, next: first_last.1.unwrap_or(0) }),
                     node: Node::L,
                     red: Default::default(),
                 });
                 // TODO: T: Debug
-                self.leaves.insert_no_overwrite(leaf, leaf_node).ok().expect("leaf conflict");
+                self.leaves.insert_no_overwrite(leaf, leaf_node).map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
 
-                (first_last.0.or(Some(leaf_node)), Some(leaf_node))
-            });
+                Ok((first_last.0.or(Some(leaf_node)), Some(leaf_node)))
+            })?;
 
-            let (first, last) = (first_last.0.unwrap(), first_last.1.unwrap());
+            let (first, last) = (
+                first_last.0.expect("impossible, no first inserted node"),
+                first_last.1.expect("impossible, no last inserted node"),
+            );
             // wrap circular list
             self.nodes[first].rel.as_mut_p().next = last;
             self.nodes[idx].node = Node::P(PNode { child: last });
-            Some(idx)
+            Ok(Some(idx))
         }
     }
 
-    pub fn replace_pertinent_by_new_leaves(&mut self, leaves: &[T]) {
-        let pertinent_root = self.pertinent_root.expect("replace is possible only after reduction");
+    pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+        let pertinent_root = self.pertinent_root.ok_or(ReplacementError::NoPertinentRoot)?;
         self.pertinent_root = match self.nodes[pertinent_root].node {
             Node::P(_) | Node::L => self.replace_by_new_leaves(pertinent_root, leaves),
             Node::Q(q) => {
@@ -279,10 +291,11 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                         }
                     }
 
-                    self.replace_by_new_leaves(first.unwrap(), leaves)
+                    self.replace_by_new_leaves(first.expect("full child not found in pertinent root"), leaves)
                 }
             }
-        };
+        }?;
+        Ok(self)
     }
 
     fn replace_node(&mut self, target: usize, source: usize) {
@@ -303,8 +316,8 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 self.nodes[q.right].rel.as_mut_rq().parent = target;
             }
             Node::L => {
-                let leaf = self.leaves.remove_by_right(&source).unwrap().0;
-                self.leaves.insert_no_overwrite(leaf, target).ok().unwrap();
+                let leaf = self.leaves.remove_by_right(&source).expect("broken leaves map").0;
+                self.leaves.insert_no_overwrite(leaf, target).ok().expect("broken leaves map");
             }
         }
 
@@ -336,7 +349,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     };
                 }
             }
-            Node::L => v.push(*self.leaves.get_by_right(&root).unwrap()),
+            Node::L => v.push(*self.leaves.get_by_right(&root).expect("broken leaves map")),
         };
         v
     }
@@ -386,7 +399,7 @@ impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
                     write!(f, "]")?;
                 }
                 Node::L => {
-                    write!(f, " {} ", tree.leaves.get_by_right(&idx).unwrap())?;
+                    write!(f, " {} ", tree.leaves.get_by_right(&idx).expect("broken leaves map"))?;
                 }
             };
 

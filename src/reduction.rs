@@ -1,3 +1,4 @@
+use crate::errors::*;
 use crate::node::*;
 use crate::rel::*;
 use crate::sublist::SubCircularList;
@@ -22,15 +23,14 @@ impl TreeNode {
 }
 
 impl<T: Copy + Eq + Hash> PQTree<T> {
-    pub(crate) fn bubble(&mut self, s: &[T]) -> bool {
+    pub(crate) fn bubble(&mut self, s_nodes: &[usize]) -> Result<(), ReductionError<T>> {
         self.nodes.iter_mut().for_each(|n| n.red = Default::default());
 
         let mut block_count = 0usize;
         let mut blocked = HashSet::new();
         let mut off_the_top = 0usize;
 
-        let mut queue = VecDeque::with_capacity(s.len());
-        s.iter().for_each(|leaf| queue.push_back(*self.leaves.get_by_left(leaf).unwrap()));
+        let mut queue: VecDeque<usize> = s_nodes.to_vec().into();
 
         fn unblock_adjacent(
             nodes: &mut [TreeNode],
@@ -67,7 +67,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             let x = if let Some(x_) = queue.pop_front() {
                 x_
             } else {
-                return self.fail();
+                return self.irreducible_error();
             };
 
             let mut rel = self.nodes[x].rel;
@@ -139,36 +139,36 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
 
         if block_count > 1 {
-            return self.fail();
+            return self.irreducible_error();
         }
 
         if let Some(&x) = blocked.iter().next() {
             // create pseudonode from block
 
-            let left = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), true, &mut blocked).unwrap();
-            let right = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), false, &mut blocked).unwrap();
+            let left = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), true, &mut blocked)
+                .expect("no nodes unblocked, but blocked nodes exists");
+            let right = unblock_adjacent(&mut self.nodes, PSEUDONODE, Some(x), false, &mut blocked)
+                .expect("no nodes unblocked, but blocked nodes exists");
             self.nodes[PSEUDONODE].node = Node::Q(QNode { left, right });
             self.nodes[PSEUDONODE].red.pertinent_child_count -= 1; // unblock_adjacent have touched central node two times
         }
 
-        true
+        Ok(())
     }
 
-    pub(crate) fn reduce(&mut self, s: &[T]) -> bool {
+    pub(crate) fn reduce(&mut self, s_nodes: &[usize]) -> Result<(), ReductionError<T>> {
         // todo: optimize?
         self.nodes.iter_mut().for_each(|n| n.red.label = NodeLabel::Empty);
 
-        let mut queue = VecDeque::with_capacity(s.len());
+        let mut queue: VecDeque<usize> = s_nodes.to_vec().into();
 
-        s.iter().for_each(|leaf| {
-            let leaf_node = *self.leaves.get_by_left(leaf).unwrap();
-            self.nodes[leaf_node].red.pertinent_leaf_count = 1;
-            self.label(leaf_node, NodeLabel::Full);
-            queue.push_back(leaf_node);
+        s_nodes.iter().for_each(|&node| {
+            self.nodes[node].red.pertinent_leaf_count = 1;
+            self.label(node, NodeLabel::Full);
         });
 
         while let Some(x) = queue.pop_front() {
-            let root = self.nodes[x].red.pertinent_leaf_count >= s.len();
+            let root = self.nodes[x].red.pertinent_leaf_count >= s_nodes.len();
 
             if !root {
                 debug_assert_eq!(self.nodes[x].red.mark, NodeMark::Unblocked);
@@ -188,10 +188,10 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 Node::Q(QNode { left, right }) => self.apply_q_templates(x, left, right, root),
                 Node::L => self.apply_l_templates(x, root),
             } {
-                return self.fail();
+                return self.irreducible_error();
             };
         }
-        true
+        Ok(())
     }
 
     fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
@@ -441,6 +441,10 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
     fn fail(&mut self) -> bool {
         false
+    }
+
+    fn irreducible_error(&mut self) -> Result<(), ReductionError<T>> {
+        Err(ReductionError::IrreducibleTree)
     }
 
     fn split_p_children(&mut self, first_child: usize) -> EnumMap<NodeLabel, SubCircularList> {
