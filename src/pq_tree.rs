@@ -176,19 +176,16 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
     }
 
-    fn remove_node(&mut self, idx: usize) -> Option<(usize, usize)> {
-        let replacement = match self.nodes[idx].rel {
+    fn remove_node(&mut self, idx: usize) {
+        match self.nodes[idx].rel {
             Rel::Root => {
                 self.destroy_tree(true);
-                None
+                return;
             }
             Rel::P(p) => {
                 if self.nodes[p.next].rel.as_p().next == idx {
                     // last child remains in parent, replace node by child
                     self.replace_node(p.parent, p.next);
-                    Some((p.next, p.parent))
-                } else {
-                    None
                 }
             }
             Rel::LQ(lq) => {
@@ -200,7 +197,6 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     self.nodes[lq.parent].node.as_mut_q().left = lq.right;
                     self.nodes[lq.right].rel = Rel::LQ(LeftChildOfQ { parent: lq.parent, right: right_right });
                 }
-                None
             }
             Rel::RQ(rq) => {
                 let left_left = self.nodes[rq.left].rel.left();
@@ -211,7 +207,6 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     self.nodes[rq.parent].node.as_mut_q().right = rq.left;
                     self.nodes[rq.left].rel = Rel::RQ(RightChildOfQ { parent: rq.parent, left: left_left });
                 }
-                None
             }
             Rel::IQ(iq) => {
                 if let (Rel::LQ(lq), Rel::RQ(_)) = (self.nodes[iq.left].rel, self.nodes[iq.right].rel) {
@@ -220,12 +215,10 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     *self.nodes[iq.left].rel.mut_right() = iq.right;
                     *self.nodes[iq.right].rel.mut_left() = iq.left;
                 }
-                None
             }
         };
 
         self.destroy_node(idx, true);
-        replacement
     }
 
     fn replace_with_pair_p(&mut self, idx: usize, left: usize, right: usize) {
@@ -287,12 +280,14 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
                         if self.nodes[current].red.label == NodeLabel::Full {
                             if let Some(first_unwrapped) = first {
-                                let replacement = self.remove_node(current);
-                                if let Some((old, new)) = replacement {
-                                    if old == first_unwrapped {
-                                        first = Some(new);
-                                    }
-                                }
+                                // remove_node can demote Q-node to P-node and even remove P and hoist sole child
+                                // but: Q node have at least three children and first is retained here
+                                //      and Q is partial (or pseudonode witch also part of partial Q node,
+                                //      so at least one empty child will remain and first cannot be moved inside tree
+                                self.remove_node(current);
+
+                                // still keep debug_assert! here
+                                debug_assert!(!&self.freelist.contains(&first_unwrapped));
                             } else {
                                 first = Some(current);
                             }
