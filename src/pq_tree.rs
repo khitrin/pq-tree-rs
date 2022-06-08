@@ -12,7 +12,7 @@ use crate::rel::*;
 #[derive(Debug, Clone)]
 pub struct PQTree<T>
 where
-    T: Copy + Eq + Hash,
+    T: Clone + Eq + Hash,
 {
     empty: bool,
     pub(crate) nodes: Vec<TreeNode>,
@@ -67,7 +67,7 @@ pub(crate) enum NodeLabel {
     DoublyPartial,
 }
 
-impl<T: Copy + Eq + Hash> PQTree<T> {
+impl<T: Clone + Eq + Hash> PQTree<T> {
     pub fn new() -> PQTree<T> {
         let root = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
         let pseudonode = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
@@ -94,7 +94,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         for leaf in s {
             match self.leaves.get_by_left(leaf) {
                 Some(&node) => s_nodes.push(node),
-                None => return Err(ReductionError::LeafNotFound(*leaf)),
+                None => return Err(ReductionError::LeafNotFound(leaf.clone())),
             };
         }
 
@@ -114,7 +114,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
     pub fn replace_leaf_by_new_leaves(mut self, leaf: &T, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
         match self.leaves.get_by_left(leaf) {
-            None => Err(ReplacementError::LeafNotFound(*leaf)),
+            None => Err(ReplacementError::LeafNotFound(leaf.clone())),
             Some(&node) => self.replace_by_new_leaves(node, leaves),
         }?;
         self.pertinent_root = None; // TODO: think about it
@@ -285,7 +285,9 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         } else if leaves.len() == 1 {
             self.destroy_node(idx, false);
             self.nodes[idx].node = Node::L;
-            self.leaves.insert_no_overwrite(leaves[0], idx).map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
+            self.leaves
+                .insert_no_overwrite(leaves[0].clone(), idx)
+                .map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
             Ok(Some(idx))
         } else {
             self.destroy_node(idx, false);
@@ -295,14 +297,16 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                 self.nodes.reserve(leaves.len() - self.freelist.len());
             }
 
-            let first_last = leaves.iter().rev().try_fold((None, None), |first_last, &leaf| {
+            let first_last = leaves.iter().rev().try_fold((None, None), |first_last, leaf| {
                 let leaf_node = self.add_node(TreeNode {
                     rel: Rel::P(ChildOfP { parent: idx, next: first_last.1.unwrap_or(0) }),
                     node: Node::L,
                     red: Default::default(),
                 });
                 // TODO: T: Debug
-                self.leaves.insert_no_overwrite(leaf, leaf_node).map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
+                self.leaves
+                    .insert_no_overwrite(leaf.clone(), leaf_node)
+                    .map_err(|e| ReplacementError::DuplicateLeaf(e.0))?;
 
                 Ok((first_last.0.or(Some(leaf_node)), Some(leaf_node)))
             })?;
@@ -369,7 +373,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
                     };
                 }
             }
-            Node::L => v.push(*self.leaves.get_by_right(&root).expect("broken leaves map")),
+            Node::L => v.push(self.leaves.get_by_right(&root).expect("broken leaves map").clone()),
         };
         v
     }
@@ -382,11 +386,11 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 }
 
-impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
+impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         fn node_fmt<T>(tree: &PQTree<T>, idx: usize, f: &mut Formatter<'_>) -> std::fmt::Result
         where
-            T: Copy + Eq + Hash + Display,
+            T: Clone + Eq + Hash + Display,
         {
             let TreeNode { node, .. } = &tree.nodes[idx];
             match node {

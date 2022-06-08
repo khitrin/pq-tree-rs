@@ -22,7 +22,7 @@ impl TreeNode {
     }
 }
 
-impl<T: Copy + Eq + Hash> PQTree<T> {
+impl<T: Clone + Eq + Hash> PQTree<T> {
     pub(crate) fn bubble(&mut self, s_nodes: &[usize]) -> Result<(), ReductionError<T>> {
         self.nodes.iter_mut().for_each(|n| n.red = Default::default());
 
