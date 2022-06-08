@@ -129,9 +129,17 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
     }
 
+    fn destroy_tree(&mut self, recycle: bool) {
+        self.nodes.truncate(2); // pseunonode and root must be kept
+        self.freelist.clear();
+        self.leaves.clear();
+        self.empty = recycle;
+        // self.pertinent_root must be set or unset by caller
+    }
+
     fn destroy_node(&mut self, idx: usize, recycle: bool) {
         if idx == ROOT {
-            self.empty = true;
+            self.destroy_tree(recycle);
             return;
         }
         debug_assert_ne!(idx, PSEUDONODE);
@@ -171,7 +179,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     fn remove_node(&mut self, idx: usize) -> Option<(usize, usize)> {
         let replacement = match self.nodes[idx].rel {
             Rel::Root => {
-                self.empty = true; // cannot be undone, tree is destroyed
+                self.destroy_tree(true);
                 None
             }
             Rel::P(p) => {
@@ -355,6 +363,9 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 
     pub fn frontier(&self) -> Vec<T> {
+        if self.empty {
+            return vec![];
+        }
         self.collect_frontier(Vec::with_capacity(self.leaves.len()), ROOT)
     }
 }

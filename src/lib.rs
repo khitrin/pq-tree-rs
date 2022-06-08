@@ -47,7 +47,7 @@ mod tests {
         tree = tree.reduction(&[Edge(1, 5), Edge(2, 5), Edge(3, 5), Edge(4, 5)]).unwrap();
         println!("reduction   *-5 : {}", &tree);
 
-        tree = tree.replace_pertinent_by_new_leaves(&[]).unwrap();
+        tree = tree.replace_pertinent_by_new_leaves(&[Edge(5, 6), Edge(5, 7)]).unwrap();
         println!("replacement 5-* : {}", &tree);
     }
 }
