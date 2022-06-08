@@ -33,7 +33,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         s.iter().for_each(|leaf| queue.push_back(*self.leaves.get_by_left(leaf).unwrap()));
 
         fn unblock_adjacent(
-            nodes: &mut Vec<TreeNode>,
+            nodes: &mut [TreeNode],
             parent: usize,
             first_blocked: Option<usize>,
             left: bool,
@@ -64,12 +64,11 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         }
 
         while queue.len() + block_count + off_the_top > 1 {
-            let x;
-            if let Some(x_) = queue.pop_front() {
-                x = x_;
+            let x = if let Some(x_) = queue.pop_front() {
+                x_
             } else {
                 return self.fail();
-            }
+            };
 
             let mut rel = self.nodes[x].rel;
             let (l_blocked, r_blocked) = if let Rel::IQ(iq) = &mut rel {
@@ -198,7 +197,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     pub(crate) fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
         let split = self.split_p_children(first_child);
 
-        if split[NodeLabel::DoublyPartial].len() != 0 {
+        if !split[NodeLabel::DoublyPartial].is_empty() {
             return self.fail();
         }
 
@@ -416,9 +415,9 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
     pub(crate) fn apply_l_templates(&mut self, x: usize, root: bool) -> bool {
         if root {
-            return self.mark_as_pertinent_root(x);
+            self.mark_as_pertinent_root(x)
         } else {
-            return self.confirm_l1(x);
+            self.confirm_l1(x)
         }
     }
 

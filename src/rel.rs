@@ -34,14 +34,14 @@ pub(crate) struct InteriorChildOfQ {
 
 impl RightChildOfQ {
     #[must_use]
-    pub(crate) fn to_iq(&self, right: usize) -> Rel {
+    pub(crate) fn to_iq(self, right: usize) -> Rel {
         Rel::IQ(InteriorChildOfQ { parent_of_unblocked: self.parent, left: self.left, right })
     }
 }
 
 impl LeftChildOfQ {
     #[must_use]
-    pub(crate) fn to_iq(&self, left: usize) -> Rel {
+    pub(crate) fn to_iq(self, left: usize) -> Rel {
         Rel::IQ(InteriorChildOfQ { parent_of_unblocked: self.parent, left, right: self.right })
     }
 }

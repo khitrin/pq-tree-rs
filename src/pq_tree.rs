@@ -219,7 +219,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
     fn replace_by_new_leaves(&mut self, idx: usize, leaves: &[T]) -> Option<usize> {
         debug_assert!(!self.freelist.contains(&idx));
-        if leaves.len() == 0 {
+        if leaves.is_empty() {
             self.remove_node(idx);
             None
         } else if leaves.len() == 1 {
@@ -390,13 +390,13 @@ impl<T: Copy + Eq + Hash + Display> Display for PQTree<T> {
                 }
             };
 
-            return Ok(());
+            Ok(())
         }
 
         if self.empty {
             write!(f, "()")
         } else {
-            node_fmt(&self, ROOT, f)
+            node_fmt(self, ROOT, f)
         }
     }
 }
