@@ -9,4 +9,5 @@ pub enum ReductionError<T> {
 pub enum ReplacementError<T> {
     NoPertinentRoot,
     DuplicateLeaf(T),
+    LeafNotFound(T),
 }

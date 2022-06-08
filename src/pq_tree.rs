@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
-use std::iter;
 
 use bimap::BiMap;
 use enum_map::Enum;
@@ -69,29 +68,21 @@ pub(crate) enum NodeLabel {
 }
 
 impl<T: Copy + Eq + Hash> PQTree<T> {
-    pub fn new(initial: &[T]) -> PQTree<T> {
-        let initial_count = initial.len();
-        assert_ne!(initial_count, 0);
-        // TODO: single leaf !
-        assert_ne!(initial_count, 1);
-
-        let pseudonode =
-            TreeNode { rel: Rel::Root, node: Node::Q(QNode { left: 0, right: 0 }), red: ReductionInfo::default() };
-
-        let root = TreeNode { rel: Rel::Root, node: Node::P(PNode { child: 2 }), red: ReductionInfo::default() };
-        let leaves = (0..initial_count).map(|i| TreeNode {
-            rel: Rel::P(ChildOfP { parent: 1, next: ((i + 1) % initial_count) + 2 }),
-            node: Node::L,
-            red: ReductionInfo::default(),
-        });
+    pub fn new() -> PQTree<T> {
+        let root = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
+        let pseudonode = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
 
         PQTree {
-            empty: false,
-            nodes: iter::once(pseudonode).chain(iter::once(root)).chain(leaves).collect(),
-            leaves: initial.iter().enumerate().map(|(i, &l)| (l, i + 2)).collect(),
-            freelist: VecDeque::new(),
+            empty: true,
+            nodes: vec![root, pseudonode],
+            freelist: Default::default(),
+            leaves: BiMap::new(),
             pertinent_root: None,
         }
+    }
+
+    pub fn from_leaves(initial: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+        PQTree::new().replace_tree_by_new_leaves(initial)
     }
 
     pub fn reduction(mut self, s: &[T]) -> Result<PQTree<T>, ReductionError<T>> {
@@ -109,6 +100,63 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
 
         self.bubble(&s_nodes)?;
         self.reduce(&s_nodes)?;
+        Ok(self)
+    }
+
+    pub fn replace_tree_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+        self.destroy_tree(false);
+        self.pertinent_root = None;
+
+        self.replace_by_new_leaves(ROOT, leaves)?;
+
+        Ok(self)
+    }
+
+    pub fn replace_leaf_by_new_leaves(mut self, leaf: &T, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+        match self.leaves.get_by_left(leaf) {
+            None => Err(ReplacementError::LeafNotFound(*leaf)),
+            Some(&node) => self.replace_by_new_leaves(node, leaves),
+        }?;
+        self.pertinent_root = None; // TODO: think about it
+        Ok(self)
+    }
+
+    pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+        let pertinent_root = self.pertinent_root.ok_or(ReplacementError::NoPertinentRoot)?;
+        self.pertinent_root = match self.nodes[pertinent_root].node {
+            Node::P(_) | Node::L => self.replace_by_new_leaves(pertinent_root, leaves),
+            Node::Q(q) => {
+                if pertinent_root != PSEUDONODE && self.nodes[pertinent_root].red.label == NodeLabel::Full {
+                    // full non-pseudo Q-node
+                    self.replace_by_new_leaves(pertinent_root, leaves)
+                } else {
+                    // partial Q-node or pseudonode
+                    // TODO: optimize for SinglyPartial case
+                    let mut next = Some(q.left);
+                    let mut first = None;
+                    while let Some(current) = next {
+                        next = if current == q.right { None } else { Some(self.nodes[current].rel.right()) };
+
+                        if self.nodes[current].red.label == NodeLabel::Full {
+                            if let Some(first_unwrapped) = first {
+                                // remove_node can demote Q-node to P-node and even remove P and hoist sole child
+                                // but: Q node have at least three children and first is retained here
+                                //      and Q is partial (or pseudonode witch also part of partial Q node,
+                                //      so at least one empty child will remain and first cannot be moved inside tree
+                                self.remove_node(current);
+
+                                // still keep debug_assert! here
+                                debug_assert!(!&self.freelist.contains(&first_unwrapped));
+                            } else {
+                                first = Some(current);
+                            }
+                        }
+                    }
+
+                    self.replace_by_new_leaves(first.expect("full child not found in pertinent root"), leaves)
+                }
+            }
+        }?;
         Ok(self)
     }
 
@@ -130,9 +178,11 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
     }
 
     fn destroy_tree(&mut self, recycle: bool) {
-        self.nodes.truncate(2); // pseunonode and root must be kept
-        self.freelist.clear();
-        self.leaves.clear();
+        if !self.empty {
+            self.nodes.truncate(2); // pseunonode and root must be kept
+            self.freelist.clear();
+            self.leaves.clear();
+        }
         self.empty = recycle;
         // self.pertinent_root must be set or unset by caller
     }
@@ -239,6 +289,12 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             Ok(Some(idx))
         } else {
             self.destroy_node(idx, false);
+
+            self.leaves.reserve(leaves.len());
+            if self.freelist.len() < leaves.len() {
+                self.nodes.reserve(leaves.len() - self.freelist.len());
+            }
+
             let first_last = leaves.iter().rev().try_fold((None, None), |first_last, &leaf| {
                 let leaf_node = self.add_node(TreeNode {
                     rel: Rel::P(ChildOfP { parent: idx, next: first_last.1.unwrap_or(0) }),
@@ -260,45 +316,6 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
             self.nodes[idx].node = Node::P(PNode { child: last });
             Ok(Some(idx))
         }
-    }
-
-    pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
-        let pertinent_root = self.pertinent_root.ok_or(ReplacementError::NoPertinentRoot)?;
-        self.pertinent_root = match self.nodes[pertinent_root].node {
-            Node::P(_) | Node::L => self.replace_by_new_leaves(pertinent_root, leaves),
-            Node::Q(q) => {
-                if pertinent_root != PSEUDONODE && self.nodes[pertinent_root].red.label == NodeLabel::Full {
-                    // full non-pseudo Q-node
-                    self.replace_by_new_leaves(pertinent_root, leaves)
-                } else {
-                    // partial Q-node or pseudonode
-                    // TODO: optimize for SinglyPartial case
-                    let mut next = Some(q.left);
-                    let mut first = None;
-                    while let Some(current) = next {
-                        next = if current == q.right { None } else { Some(self.nodes[current].rel.right()) };
-
-                        if self.nodes[current].red.label == NodeLabel::Full {
-                            if let Some(first_unwrapped) = first {
-                                // remove_node can demote Q-node to P-node and even remove P and hoist sole child
-                                // but: Q node have at least three children and first is retained here
-                                //      and Q is partial (or pseudonode witch also part of partial Q node,
-                                //      so at least one empty child will remain and first cannot be moved inside tree
-                                self.remove_node(current);
-
-                                // still keep debug_assert! here
-                                debug_assert!(!&self.freelist.contains(&first_unwrapped));
-                            } else {
-                                first = Some(current);
-                            }
-                        }
-                    }
-
-                    self.replace_by_new_leaves(first.expect("full child not found in pertinent root"), leaves)
-                }
-            }
-        }?;
-        Ok(self)
     }
 
     fn replace_node(&mut self, target: usize, source: usize) {

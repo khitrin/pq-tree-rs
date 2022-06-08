@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn simple_planarity_test() {
-        let mut tree = PQTree::new(&[Edge(1, 2), Edge(1, 3), Edge(1, 5)]);
+        let mut tree = PQTree::from_leaves(&[Edge(1, 2), Edge(1, 3), Edge(1, 5)]).unwrap();
         println!("initial         : {}", &tree);
 
         tree = tree.reduction(&[Edge(1, 2)]).unwrap();
