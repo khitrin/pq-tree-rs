@@ -194,7 +194,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         true
     }
 
-    pub(crate) fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
+    fn apply_p_templates(&mut self, x: usize, first_child: usize, root: bool) -> bool {
         let split = self.split_p_children(first_child);
 
         if !split[NodeLabel::DoublyPartial].is_empty() {
@@ -326,7 +326,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         self.fail()
     }
 
-    pub(crate) fn apply_q_templates(&mut self, x: usize, left: usize, right: usize, root: bool) -> bool {
+    fn apply_q_templates(&mut self, x: usize, left: usize, right: usize, root: bool) -> bool {
         enum State {
             Initial,
             E,
@@ -413,7 +413,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         };
     }
 
-    pub(crate) fn apply_l_templates(&mut self, x: usize, root: bool) -> bool {
+    fn apply_l_templates(&mut self, x: usize, root: bool) -> bool {
         if root {
             self.mark_as_pertinent_root(x)
         } else {
@@ -425,7 +425,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         true
     }
 
-    pub(crate) fn label(&mut self, x: usize, label: NodeLabel) -> bool {
+    fn label(&mut self, x: usize, label: NodeLabel) -> bool {
         self.nodes[x].red.label = label;
         true
     }
@@ -439,7 +439,7 @@ impl<T: Copy + Eq + Hash> PQTree<T> {
         true
     }
 
-    pub(crate) fn fail(&mut self) -> bool {
+    fn fail(&mut self) -> bool {
         false
     }
 

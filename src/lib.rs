@@ -2,7 +2,7 @@ mod node;
 mod pq_tree;
 mod rel;
 mod sublist;
-mod templates;
+mod reduction;
 
 pub use self::pq_tree::*;
 
