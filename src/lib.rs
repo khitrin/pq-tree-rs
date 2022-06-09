@@ -1,3 +1,5 @@
+pub use self::pq_tree::*;
+
 mod errors;
 mod node;
 mod pq_tree;
@@ -5,14 +7,14 @@ mod reduction;
 mod rel;
 mod sublist;
 
-pub use self::pq_tree::*;
-
 #[cfg(test)]
 mod tests {
-    use crate::PQTree;
-    use std::fmt::{Display, Formatter};
+    use std::fmt::{Debug, Display, Formatter};
+    use std::hash::Hash;
 
-    #[derive(Hash, PartialEq, Eq, Debug, Copy, Clone)]
+    use crate::PQTree;
+
+    #[derive(Hash, PartialEq, Eq, Copy, Clone)]
     struct Edge(i32, i32);
 
     impl Display for Edge {
@@ -21,33 +23,63 @@ mod tests {
         }
     }
 
+    impl Debug for Edge {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            Display::fmt(self, f)
+        }
+    }
+
+    fn reduce<T: Eq + Hash + Clone + Debug + Display>(mut tree: PQTree<T>, s: &[T]) -> PQTree<T> {
+        tree = tree.reduction(s).unwrap();
+        println!("reduction   {:<22} {tree}", format!("{:?}:", s));
+        tree
+    }
+
+    fn replace<T: Eq + Hash + Clone + Debug + Display>(mut tree: PQTree<T>, s: &[T]) -> PQTree<T> {
+        tree = tree.replace_pertinent_by_new_leaves(s).unwrap();
+        println!("replacement {:<22} {tree}", format!("{:?}:", s));
+        tree
+    }
+
     #[test]
     fn simple_planarity_test() {
         let mut tree = PQTree::from_leaves(&[Edge(1, 2), Edge(1, 3), Edge(1, 5)]).unwrap();
-        println!("initial         : {}", &tree);
+        println!("initial:                           {tree}");
 
-        tree = tree.reduction(&[Edge(1, 2)]).unwrap();
-        println!("reduction   *-2 : {}", &tree);
+        tree = reduce(tree, &[Edge(1, 2)]);
+        tree = replace(tree, &[Edge(2, 3), Edge(2, 4), Edge(2, 5)]);
 
-        tree = tree.replace_pertinent_by_new_leaves(&[Edge(2, 3), Edge(2, 4), Edge(2, 5)]).unwrap();
-        println!("replacement 2-* : {}", &tree);
+        tree = reduce(tree, &[Edge(1, 3), Edge(2, 3)]);
+        tree = replace(tree, &[Edge(3, 4), Edge(3, 5)]);
 
-        tree = tree.reduction(&[Edge(1, 3), Edge(2, 3)]).unwrap();
-        println!("reduction   *-3 : {}", &tree);
+        tree = reduce(tree, &[Edge(2, 4), Edge(3, 4)]);
+        tree = replace(tree, &[Edge(4, 5)]);
 
-        tree = tree.replace_pertinent_by_new_leaves(&[Edge(3, 4), Edge(3, 5)]).unwrap();
-        println!("replacement 3-* : {}", &tree);
+        tree = reduce(tree, &[Edge(1, 5), Edge(2, 5), Edge(3, 5), Edge(4, 5)]);
+        tree = replace(tree, &[]);
 
-        tree = tree.reduction(&[Edge(2, 4), Edge(3, 4)]).unwrap();
-        println!("reduction   *-4 : {}", &tree);
+        drop(tree);
+    }
 
-        tree = tree.replace_pertinent_by_new_leaves(&[Edge(4, 5)]).unwrap();
-        println!("replacement 4-* : {}", &tree);
+    #[test]
+    fn consecutive_ones_test() {
+        let matrix = vec![
+            vec![1, 1, 0, 1, 1],
+            vec![0, 0, 0, 1, 0],
+            vec![1, 1, 1, 1, 0],
+            vec![1, 1, 1, 1, 1],
+            vec![1, 0, 1, 1, 0],
+        ];
 
-        tree = tree.reduction(&[Edge(1, 5), Edge(2, 5), Edge(3, 5), Edge(4, 5)]).unwrap();
-        println!("reduction   *-5 : {}", &tree);
+        let mut tree = PQTree::from_leaves(&[1, 2, 3, 4, 5]).unwrap();
+        tree.frontier().into_iter().for_each(|r| println!("{:?}", matrix[r - 1]));
+        println!("initial:                           {tree}");
+        tree = reduce(tree, &[1, 3, 4, 5]);
+        tree = reduce(tree, &[1, 3, 4]);
+        tree = reduce(tree, &[3, 4, 5]);
+        tree = reduce(tree, &[1, 2, 3, 4, 5]);
+        tree = reduce(tree, &[1, 4]);
 
-        tree = tree.replace_pertinent_by_new_leaves(&[Edge(5, 6), Edge(5, 7)]).unwrap();
-        println!("replacement 5-* : {}", &tree);
+        tree.frontier().into_iter().for_each(|r| println!("{:?}", matrix[r - 1]));
     }
 }

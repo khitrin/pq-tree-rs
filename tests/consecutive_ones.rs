@@ -43,6 +43,8 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
     }
 
     let frontier = pq.frontier();
+    assert_eq!(frontier.len(), rows);
+
     for c in 0..cols {
         let changes = frontier
             .iter()

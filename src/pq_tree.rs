@@ -388,22 +388,43 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
 
 impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        fn node_fmt<T>(tree: &PQTree<T>, idx: usize, f: &mut Formatter<'_>) -> std::fmt::Result
+        fn node_fmt<T>(
+            tree: &PQTree<T>,
+            idx: usize,
+            f: &mut Formatter<'_>,
+            mut mark_full: bool,
+            non_first: bool,
+        ) -> std::fmt::Result
         where
             T: Clone + Eq + Hash + Display,
         {
+            if non_first {
+                write!(f, " ")?;
+            }
+
+            let marked_full = if mark_full && tree.nodes[idx].red.label == NodeLabel::Full {
+                mark_full = false;
+                write!(f, "<")?;
+                true
+            } else {
+                false
+            };
+
             let TreeNode { node, .. } = &tree.nodes[idx];
             match node {
                 Node::P(p) => {
                     write!(f, "(")?;
 
                     let mut p_idx = p.child;
+                    let mut not_first = false;
                     loop {
-                        node_fmt(tree, p_idx, f)?;
+                        node_fmt(tree, p_idx, f, mark_full, not_first)?;
                         p_idx = tree.nodes[p_idx].rel.as_p().next;
                         if p_idx == p.child {
                             break;
                         }
+                        // not_first = !marked;
+                        not_first = true;
                     }
 
                     write!(f, ")")?;
@@ -412,11 +433,14 @@ impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
                     write!(f, "[")?;
 
                     let mut q_idx = q.left;
+                    let mut not_first = false;
+
                     loop {
-                        node_fmt(tree, q_idx, f)?;
+                        node_fmt(tree, q_idx, f, mark_full, not_first)?;
                         let TreeNode { rel, .. } = &tree.nodes[q_idx];
                         match rel {
                             Rel::LQ(LeftChildOfQ { right, .. }) | Rel::IQ(InteriorChildOfQ { right, .. }) => {
+                                not_first = true;
                                 q_idx = *right
                             }
                             _ => break,
@@ -426,9 +450,13 @@ impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
                     write!(f, "]")?;
                 }
                 Node::L => {
-                    write!(f, " {} ", tree.leaves.get_by_right(&idx).expect("broken leaves map"))?;
+                    write!(f, "{}", tree.leaves.get_by_right(&idx).expect("broken leaves map"))?;
                 }
             };
+
+            if marked_full {
+                write!(f, ">")?;
+            }
 
             Ok(())
         }
@@ -436,7 +464,7 @@ impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
         if self.empty {
             write!(f, "()")
         } else {
-            node_fmt(self, ROOT, f)
+            node_fmt(self, ROOT, f, self.pertinent_root.is_some(), false).map(|_| ())
         }
     }
 }
