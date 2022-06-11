@@ -81,11 +81,11 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         }
     }
 
-    pub fn from_leaves(initial: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+    pub fn from_leaves(initial: &[T]) -> Result<Self, ReplacementError<T>> {
         PQTree::new().replace_tree_by_new_leaves(initial)
     }
 
-    pub fn reduction(mut self, s: &[T]) -> Result<PQTree<T>, ReductionError<T>> {
+    pub fn reduction(mut self, s: &[T]) -> Result<Self, ReductionError<T>> {
         if s.is_empty() {
             return Err(ReductionError::EmptyLeafSet);
         }
@@ -103,7 +103,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
-    pub fn replace_tree_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+    pub fn replace_tree_by_new_leaves(mut self, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         self.destroy_tree(false);
         self.pertinent_root = None;
 
@@ -112,7 +112,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
-    pub fn replace_leaf_by_new_leaves(mut self, leaf: &T, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+    pub fn replace_leaf_by_new_leaves(mut self, leaf: &T, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         match self.leaves.get_by_left(leaf) {
             None => Err(ReplacementError::LeafNotFound(leaf.clone())),
             Some(&node) => self.replace_by_new_leaves(node, leaves),
@@ -121,7 +121,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
-    pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<PQTree<T>, ReplacementError<T>> {
+    pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         let pertinent_root = self.pertinent_root.ok_or(ReplacementError::NoPertinentRoot)?;
         self.pertinent_root = match self.nodes[pertinent_root].node {
             Node::P(_) | Node::L => self.replace_by_new_leaves(pertinent_root, leaves),
