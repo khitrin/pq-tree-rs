@@ -1,11 +1,13 @@
+use std::collections::{HashSet, VecDeque};
+use std::hash::Hash;
+
+use enum_map::{enum_map, EnumMap};
+
 use crate::errors::*;
 use crate::node::*;
 use crate::rel::*;
 use crate::sublist::SubCircularList;
 use crate::{NodeLabel, NodeMark, PQTree, TreeNode, ABSENT, PSEUDONODE};
-use enum_map::{enum_map, EnumMap};
-use std::collections::{HashSet, VecDeque};
-use std::hash::Hash;
 
 impl TreeNode {
     fn parent_of_unblocked(&self) -> usize {
@@ -231,17 +233,39 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
                 } else {
                     // P3
                     let empty_sub_node = self.add_sub_p_node(&split[NodeLabel::Empty], NodeLabel::Empty);
-                    self.nodes[x].node = Node::Q(QNode { left: empty_sub_node, right: full_sub_node });
 
-                    self.nodes[empty_sub_node].rel = Rel::LQ(LeftChildOfQ { parent: x, right: full_sub_node });
-                    self.nodes[full_sub_node].rel = Rel::RQ(RightChildOfQ { parent: x, left: empty_sub_node });
+                    let (left, right) = if self.nodes[x].node.as_p().child == split[NodeLabel::Empty].first() {
+                        (empty_sub_node, full_sub_node)
+                    } else {
+                        (full_sub_node, empty_sub_node)
+                    };
+
+                    self.nodes[x].node = Node::Q(QNode { left, right });
+
+                    self.nodes[left].rel = Rel::LQ(LeftChildOfQ { parent: x, right });
+                    self.nodes[right].rel = Rel::RQ(RightChildOfQ { parent: x, left });
                     return self.label(x, NodeLabel::SinglyPartial);
                 }
             }
         } else if singly == 1 {
             // P4 or P5
             let sp = split[NodeLabel::SinglyPartial].first();
-            let full_left = self.nodes[self.nodes[sp].node.as_q().left].red.label == NodeLabel::Full;
+            // determine order by first node
+            let full_left = {
+                let first_in_p = self.nodes[x].node.as_p().child;
+                let sp_full_left = self.nodes[self.nodes[sp].node.as_q().left].red.label == NodeLabel::Full;
+
+                let full_left = if first_in_p == sp {
+                    sp_full_left
+                } else {
+                    full > 0 && first_in_p == split[NodeLabel::Full].first()
+                };
+
+                if sp_full_left != full_left {
+                    self.reverse_q(sp);
+                }
+                full_left
+            };
 
             if full > 0 {
                 let full_sub_node = self.add_sub_p_node(&split[NodeLabel::Full], NodeLabel::Full);
@@ -270,28 +294,14 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
             }
         } else if root && singly == 2 {
             // P6
-            let (left, right) = {
-                let sp1 = split[NodeLabel::SinglyPartial].first();
-                let sp2 = split[NodeLabel::SinglyPartial].last();
 
-                let sp1_empty_left = self.nodes[self.nodes[sp1].node.as_q().left].red.label == NodeLabel::Empty;
-                let sp2_empty_left = self.nodes[self.nodes[sp2].node.as_q().left].red.label == NodeLabel::Empty;
-
-                match (sp1_empty_left, sp2_empty_left) {
-                    (true, false) => (sp1, sp2),
-                    (false, true) => (sp2, sp1),
-                    (true, true) => {
-                        self.reverse_q(sp2);
-                        (sp1, sp2)
-                    }
-                    (false, false) => {
-                        self.reverse_q(sp1);
-                        (sp1, sp2)
-                    }
-                }
-            };
+            let left = split[NodeLabel::SinglyPartial].first();
+            let right = split[NodeLabel::SinglyPartial].last();
 
             debug_assert_ne!(left, PSEUDONODE);
+
+            self.ensure_q_empty_left(left);
+            self.ensure_q_empty_right(right);
 
             if full > 0 {
                 let full_sub_node = self.add_sub_p_node(&split[NodeLabel::Full], NodeLabel::Full);
@@ -466,6 +476,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
             if label != prev_label {
                 // prev pointer targets to current, but it isn't good, wrap previous list
                 self.nodes[map[prev_label].last()].rel.as_mut_p().next = map[prev_label].first();
+                map[prev_label].cut();
 
                 // continue old wrapped list to current
                 if !map[label].is_empty() {
@@ -511,9 +522,23 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
     }
 
     fn recombine_p(&mut self, p: usize, empty: &SubCircularList, full: usize) {
-        self.nodes[p].node.as_mut_p().child = empty.first();
-        self.nodes[empty.last()].rel.as_mut_p().next = full;
-        self.nodes[full].rel = Rel::P(ChildOfP { parent: p, next: empty.first() });
+        if self.nodes[p].node.as_p().child == empty.first() {
+            // empty-then-full
+            let cut = empty.first_cut().expect("empty exists");
+
+            // weave full in the middle
+            self.nodes[full].rel = Rel::P(ChildOfP { parent: p, next: self.nodes[cut].rel.as_p().next });
+            self.nodes[cut].rel.as_mut_p().next = full;
+        } else {
+            // full-then-empty
+
+            // restore circular order
+            self.nodes[empty.last()].rel.as_mut_p().next = full;
+            self.nodes[full].rel = Rel::P(ChildOfP { parent: p, next: empty.first() });
+
+            // attach full
+            self.nodes[p].node.as_mut_p().child = full;
+        }
     }
 
     fn attach_to_q(&mut self, q: usize, child: usize, to_left: bool) {
