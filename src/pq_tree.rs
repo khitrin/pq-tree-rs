@@ -386,6 +386,107 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
     }
 }
 
+// TODO: optimize, reduce allocations, refs and so on
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SortPair<T: Ord + Clone>(T, usize);
+
+impl<T: Clone + Eq + Hash + Ord> PQTree<T> {
+    pub fn sort_minimal(&mut self) {
+        if !self.empty {
+            self.sort(ROOT, false);
+        }
+    }
+
+    pub fn sort_lexicographically(&mut self) {
+        if !self.empty {
+            self.sort(ROOT, true);
+        }
+    }
+
+    fn sort(&mut self, idx: usize, lexicographically: bool) -> T {
+        match self.nodes[idx].node {
+            Node::P(PNode { child }) => self.sort_p(idx, child, lexicographically),
+            Node::Q(QNode { left, right }) => self.sort_q(idx, left, right, lexicographically),
+            Node::L => self.leaves.get_by_right(&idx).unwrap().clone(),
+        }
+    }
+
+    fn sort_p(&mut self, idx: usize, first_child: usize, lexicographically: bool) -> T {
+        let mut scratch = vec![];
+
+        let mut next = Some(first_child);
+        while let Some(current) = next {
+            next = {
+                let next = self.nodes[current].rel.next();
+                if next != first_child {
+                    Some(next)
+                } else {
+                    None
+                }
+            };
+            scratch.push(SortPair(self.sort(current, lexicographically), current));
+        }
+
+        scratch.sort_unstable();
+        let first = scratch[0].clone();
+
+        let last = scratch
+            .into_iter()
+            .map(|p| p.1)
+            .reduce(|a, b| {
+                self.nodes[a].rel.as_mut_p().next = b;
+                b
+            })
+            .unwrap();
+
+        self.nodes[last].rel.as_mut_p().next = first.1;
+        self.nodes[idx].node.as_mut_p().child = first.1;
+
+        first.0
+    }
+
+    fn sort_q(&mut self, idx: usize, left_child: usize, right_child: usize, lexicographically: bool) -> T {
+        // for even number of children we have to deal with case with middle min
+
+        let mut left = left_child;
+        let mut right = right_child;
+        let left_min = self.sort(left, lexicographically);
+        let right_min = self.sort(right, lexicographically);
+        let (mut min, need_reverse) = if right_min.gt(&left_min) { (left_min, false) } else { (right_min, true) };
+
+        loop {
+            // left and right already processed
+            left = self.nodes[left].rel.right();
+            if left == right {
+                // even case
+                break;
+            }
+
+            right = self.nodes[right].rel.left();
+            if left == right {
+                // odd case
+                let middle_min = self.sort(left, lexicographically);
+                if !lexicographically {
+                    min = min.min(middle_min);
+                }
+                break;
+            }
+
+            let left_min = self.sort(left, lexicographically);
+            let right_min = self.sort(right, lexicographically);
+            if !lexicographically {
+                min = min.min(left_min).min(right_min);
+            }
+        }
+
+        if need_reverse {
+            self.reverse_q(idx);
+        }
+
+        min
+    }
+}
+
 impl<T: Clone + Eq + Hash + Display> Display for PQTree<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         fn node_fmt<T>(

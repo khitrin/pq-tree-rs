@@ -35,7 +35,10 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
 
     data.shuffle(&mut rng);
 
-    let mut pq = PQTree::from_leaves(&(0..rows).collect::<Vec<usize>>()).unwrap();
+    let mut leaves = (0..rows).collect::<Vec<usize>>();
+    leaves.shuffle(&mut rng);
+
+    let mut pq = PQTree::from_leaves(&leaves).unwrap();
     for c in 0..cols {
         let s = (0..rows).into_iter().filter(|&r| data[r][c] == 1).collect::<Vec<usize>>();
         assert_ne!(s.len(), 0);
@@ -55,4 +58,8 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
 
         assert_eq!(changes, 2);
     }
+
+    // TODO: better tests for sort
+    pq.sort_lexicographically();
+    pq.sort_minimal();
 }

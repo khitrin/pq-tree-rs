@@ -555,7 +555,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         }
     }
 
-    fn reverse_q(&mut self, q: usize) {
+    pub(crate) fn reverse_q(&mut self, q: usize) {
         debug_assert_ne!(q, PSEUDONODE);
         let mut current = self.nodes[self.nodes[q].node.as_q().left].rel.as_lq().right;
         while let Rel::IQ(iq) = &mut self.nodes[current].rel {
