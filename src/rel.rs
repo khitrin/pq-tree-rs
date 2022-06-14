@@ -1,6 +1,34 @@
+use crate::ABSENT;
+
+// adding the parent field to Rel::Root creates very optimized asm:
+//
+// parent_of_unblocked:                    # @parent_of_unblocked
+// # %bb.0:
+// 	movq	8(%rdi), %rax
+// 	retq
+
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct AbsentVal {
+    val: usize,
+}
+
+impl From<usize> for AbsentVal {
+    fn from(val: usize) -> Self {
+        debug_assert_eq!(val, ABSENT);
+        AbsentVal { val: ABSENT }
+    }
+}
+
+impl From<AbsentVal> for usize {
+    fn from(av: AbsentVal) -> Self {
+        av.val
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum Rel {
-    Root,
+    Root(AbsentVal),
     P(ChildOfP),
     LQ(LeftChildOfQ),
     RQ(RightChildOfQ),

@@ -70,8 +70,8 @@ pub(crate) enum NodeLabel {
 impl<T: Clone + Eq + Hash> PQTree<T> {
     /// Creates an empty `PQTree`.
     pub fn new() -> PQTree<T> {
-        let root = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
-        let pseudonode = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
+        let root = TreeNode { rel: Rel::Root(ABSENT.into()), node: Node::L, red: ReductionInfo::default() };
+        let pseudonode = TreeNode { rel: Rel::Root(ABSENT.into()), node: Node::L, red: ReductionInfo::default() };
 
         PQTree {
             empty: true,
@@ -209,7 +209,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
     pub(crate) fn recycle_node(&mut self, idx: usize) {
         // TODO: remove last node and truncate freelist if possible?
         debug_assert!(!self.freelist.contains(&idx));
-        self.nodes[idx].rel = Rel::Root;
+        self.nodes[idx].rel = Rel::Root(ABSENT.into());
         self.freelist.push_back(idx);
     }
 
@@ -274,7 +274,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
 
     fn remove_node(&mut self, idx: usize) {
         match self.nodes[idx].rel {
-            Rel::Root => {
+            Rel::Root(_) => {
                 self.destroy_tree(true);
                 return;
             }

@@ -12,7 +12,7 @@ use crate::{NodeLabel, NodeMark, PQTree, TreeNode, ABSENT, PSEUDONODE};
 impl TreeNode {
     fn parent_of_unblocked(&self) -> usize {
         match self.rel {
-            Rel::Root => ABSENT,
+            Rel::Root(root) => root.into(),
             Rel::P(ChildOfP { parent, .. })
             | Rel::LQ(LeftChildOfQ { parent, .. })
             | Rel::RQ(RightChildOfQ { parent, .. }) => parent,
@@ -500,7 +500,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
             children.first() // parent must be changed by caller
         } else {
             let new_p = self.add_node(TreeNode {
-                rel: Rel::Root, // parent must be changed by caller
+                rel: Rel::Root(ABSENT.into()), // parent must be changed by caller
                 node: Node::P(PNode { child: children.first() }),
                 red: Default::default(),
             });
