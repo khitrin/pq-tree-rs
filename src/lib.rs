@@ -237,14 +237,14 @@
 //! J. Comput. Syst. Sci., 13, 335-379. <https://doi.org/10.1016/s0022-0000(76)80045-1>
 
 pub use self::errors::*;
-pub use self::pq_tree::*;
+pub use self::tree::*;
 
 mod errors;
 mod node;
-mod pq_tree;
 mod reduction;
 mod rel;
 mod sublist;
+mod tree;
 
 #[cfg(test)]
 mod tests {
