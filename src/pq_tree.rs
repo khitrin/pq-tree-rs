@@ -68,6 +68,7 @@ pub(crate) enum NodeLabel {
 }
 
 impl<T: Clone + Eq + Hash> PQTree<T> {
+    /// Creates an empty `PQTree`.
     pub fn new() -> PQTree<T> {
         let root = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
         let pseudonode = TreeNode { rel: Rel::Root, node: Node::L, red: ReductionInfo::default() };
@@ -81,10 +82,26 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         }
     }
 
+    /// Creates PQTree from list of leaves.
+    ///
+    /// First creates an empty tree, then replaces whole tree by new leaves:
+    ///
+    /// ```PQTree::new().replace_tree_by_new_leaves(initial)```
+    ///
+    /// # Errors
+    /// Returns `Err(ReplacementError::DuplicateLeaf(leaf))` if `leaf` presents in `initial` more than one time.
     pub fn from_leaves(initial: &[T]) -> Result<Self, ReplacementError<T>> {
         PQTree::new().replace_tree_by_new_leaves(initial)
     }
 
+    /// Applies reduction to the tree enforcing leaves from `s` to be consequent
+    /// and marks pertinent subroot.
+    /// # Errors
+    /// Returns `Err(ReductionError::EmptyLeafSet)` if `s` is empty.
+    ///
+    /// Returns `Err(ReductionError::LeafNotFound(leaf))` if `leaf` from `s` not found in the tree.
+    ///
+    /// Returns `Err(ReductionError::IrreducibleTree)` if tree cannot be reduced over new constraint.
     pub fn reduction(mut self, s: &[T]) -> Result<Self, ReductionError<T>> {
         if s.is_empty() {
             return Err(ReductionError::EmptyLeafSet);
@@ -103,6 +120,11 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
+    /// Replaces whole tree by new leaves.
+    ///
+    /// Same as [`PQTree::from_leaves`] but without reallocation.
+    /// # Errors
+    /// Returns `Err(ReplacementError::DuplicateLeaf(leaf))` if `leaf` presents in `leaves` more than one time.
     pub fn replace_tree_by_new_leaves(mut self, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         self.destroy_tree(false);
         self.pertinent_root = None;
@@ -112,6 +134,18 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
+    /// Replaces single `leaf` by new `leaves`.
+    /// Can be called with empty `leaves` to remove `leaf` from tree.
+    ///
+    /// First removes `leaf` from tree, then adds new leaves.
+    ///
+    /// Clears pertinent root mark if any.
+    ///
+    /// # Errors
+    /// Returns `Err(ReplacementError::LeafNotFound(leaf))` if `leaf` not found in the tree.
+    ///
+    /// Returns `Err(ReplacementError::DuplicateLeaf(leaf))` if `leaf` already exists in the tree or presents in `leaves` more than one time.
+
     pub fn replace_leaf_by_new_leaves(mut self, leaf: &T, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         match self.leaves.get_by_left(leaf) {
             None => Err(ReplacementError::LeafNotFound(leaf.clone())),
@@ -120,6 +154,18 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         self.pertinent_root = None; // TODO: think about it
         Ok(self)
     }
+
+    /// Replaces full children of the pertinent root by new `leaves`.
+    /// Can be called with empty `leaves` to remove all full children from the tree.
+    ///
+    /// First removes all full nodes and leaves from the tree, then adds new leaves.
+    ///
+    /// Marks added subtree root as the pertinent root if `leaves` is not empty or clears the mark.
+    ///
+    /// # Errors
+    /// Returns `Err(ReplacementError::DuplicateLeaf(leaf))` if `leaf` already exists in the tree or presents in `leaves` more than one time.
+    ///
+    /// Returns `Err(ReplacementError::NoPertinentRoot))` if no pertinent root is marked in the tree.
 
     pub fn replace_pertinent_by_new_leaves(mut self, leaves: &[T]) -> Result<Self, ReplacementError<T>> {
         let pertinent_root = self.pertinent_root.ok_or(ReplacementError::NoPertinentRoot)?;
@@ -378,6 +424,7 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         v
     }
 
+    /// Returns the tree frontier: a vector of leaves ordered in an allowed way for the tree.
     pub fn frontier(&self) -> Vec<T> {
         if self.empty {
             return vec![];
@@ -391,12 +438,14 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
 struct SortPair<T: Ord + Clone>(T, usize);
 
 impl<T: Clone + Eq + Hash + Ord> PQTree<T> {
+    /// Sorts the tree by "minimal order"
     pub fn sort_minimal(&mut self) {
         if !self.empty {
             self.sort(ROOT, false);
         }
     }
 
+    /// Sorts the tree "lexicographically"
     pub fn sort_lexicographically(&mut self) {
         if !self.empty {
             self.sort(ROOT, true);
