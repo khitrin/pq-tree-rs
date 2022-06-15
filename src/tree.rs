@@ -206,6 +206,14 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
         Ok(self)
     }
 
+    /// Returns the tree frontier: a vector of leaves ordered in an allowed way for the tree.
+    pub fn frontier(&self) -> Vec<T> {
+        if self.empty {
+            return vec![];
+        }
+        self.collect_frontier(Vec::with_capacity(self.leaves.len()), ROOT)
+    }
+
     pub(crate) fn recycle_node(&mut self, idx: usize) {
         // TODO: remove last node and truncate freelist if possible?
         debug_assert!(!self.freelist.contains(&idx));
@@ -422,14 +430,6 @@ impl<T: Clone + Eq + Hash> PQTree<T> {
             Node::L => v.push(self.leaves.get_by_right(&root).expect("broken leaves map").clone()),
         };
         v
-    }
-
-    /// Returns the tree frontier: a vector of leaves ordered in an allowed way for the tree.
-    pub fn frontier(&self) -> Vec<T> {
-        if self.empty {
-            return vec![];
-        }
-        self.collect_frontier(Vec::with_capacity(self.leaves.len()), ROOT)
     }
 }
 
