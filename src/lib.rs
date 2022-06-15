@@ -236,6 +236,10 @@
 //! Testing for the Consecutive Ones Property, Interval Graphs, and Graph Planarity Using PQ-Tree Algorithms.
 //! J. Comput. Syst. Sci., 13, 335-379. <https://doi.org/10.1016/s0022-0000(76)80045-1>
 
+#[doc = include_str!("../README.md")]
+#[cfg(doctest)]
+pub struct ReadmeDoctests;
+
 pub use self::errors::*;
 pub use self::tree::*;
 

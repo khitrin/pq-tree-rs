@@ -1,6 +1,13 @@
 [package]
 name = "pq-tree"
 version = "0.1.0"
+authors = ["Nikolay Khitrin"]
+description = "PQ-tree implementation for consecutive ones property (C1P) and graph planarity testing"
+license = "Apache-2.0"
+repository = "https://github.com/khitrin/pq-tree-rs"
+readme = "README.md"
+keywords = ["graph", "tree"]
+categories = ["data-structures", "algorithms"]
 edition = "2021"
 
 [dependencies]
