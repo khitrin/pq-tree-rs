@@ -48,6 +48,18 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
     let frontier = pq.frontier();
     assert_eq!(frontier.len(), rows);
 
+    verify_c1p(cols, &data, &frontier);
+
+    let mut pq2 = pq.clone();
+
+    pq.sort_lexicographically();
+    verify_c1p(cols, &data, &pq.frontier());
+
+    pq2.sort_minimal();
+    verify_c1p(cols, &data, &pq.frontier());
+}
+
+fn verify_c1p(cols: usize, data: &Vec<Vec<i32>>, frontier: &Vec<usize>) {
     for c in 0..cols {
         let changes = frontier
             .iter()
@@ -58,8 +70,4 @@ fn consecutive_ones_test_iter(rows: usize, cols: usize, seed: u64) {
 
         assert_eq!(changes, 2);
     }
-
-    // TODO: better tests for sort
-    pq.sort_lexicographically();
-    pq.sort_minimal();
 }
